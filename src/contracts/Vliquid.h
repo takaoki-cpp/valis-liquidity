@@ -2,6 +2,7 @@ using namespace QPI;
 
 #define MILLION 1000000
 #define VLIQUID_CONTRACTID _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 7)
+#define MAX_TOKENS 5
 
 struct VLIQUID2
 {
@@ -128,22 +129,22 @@ public:
         id issuer;
         uint64 assetName;
         sint64 expensiveTokenAmount;
-    }
+    };
     struct ConvertToMicroToken_output
     {
         uint64 microTokenAmount;
-    }
+    };
 
     struct ConvertToExpensiveToken_input
     {
         id issuer;
         uint64 assetName;
         uint64 microTokenAmount;
-    }
+    };
     struct ConvertToExpensiveToken_output
     {
         sint64 expensiveTokenAmount;
-    }
+    };
 
     struct TransferMicroToken_input
     {
@@ -151,11 +152,11 @@ public:
         id recipient;
         uint64 assetName;
         uint64 microTokenAmount;
-    }
+    };
     struct TransferMicroToken_output
     {
         uint64 transferredMicroTokenAmount;
-    }
+    };
 
     struct MicroTokenAllowance_input
     {
@@ -174,11 +175,11 @@ public:
 		id issuer;
 		uint64 assetName;
 		id owner;
-	}
+	};
 	struct BalanceOfMicroToken_output
 	{
 		uint64 balance;
-	}
+	};
 
     struct ApproveMicroToken_input
     {
@@ -186,11 +187,11 @@ public:
         id recipient;
         uint64 assetName;
         uint64 microTokenAmount;
-    }
+    };
     struct ApproveMicroToken_output
     {
         uint64 approvedMicroTokenAmount;
-    }
+    };
 
     struct TransferFromMicroToken_input
     {
@@ -199,47 +200,54 @@ public:
         id spender;
         id recipient;
         uint64 microTokenAmount;
-    }
+    };
     struct TransferFromMicroToken_output
     {
         uint64 transferredMicroTokenAmount;
-    }
+    };
 
     struct CreateLiquid_input
     {
-        
-    }
+		struct TokenInfo {
+			id issuer;
+			uint64 assetName;
+			uint64 balance;
+			uint8 weight;
+		};
+        array<TokenInfo, MAX_TOKENS> tokens;
+		uint64 fee;
+    };
     struct CreateLiquid_output
     {
-
-    }
+		uint64 poolId;
+    };
 
     struct AddLiquidity_input
     {
         
-    }
+    };
     struct AddLiquidity_output
     {
 
-    }
+    };
 
     struct RemoveLiquidity_input
     {
         
-    }
+    };
     struct RemoveLiquidity_output
     {
 
-    }
+    };
 
     struct Swap_input
     {
         
-    }
+    };
     struct Swap_output
     {
 
-    }
+    };
 
 private:
     // declare state variables
@@ -248,7 +256,7 @@ private:
         id issuer;
         uint64 assetName;
         uint64 balance;
-    }
+    };
     
     array<_MicroTokenBalance, 16777216> _microTokenBalances;
 
@@ -258,13 +266,24 @@ private:
         id issuer;
         uint64 assetName;
         uint64 balance;
-    }
+    };
 
     array<_MicroTokenAllowance, 16777216> _microTokenAllowances;
 
-    struct _LiquidInfo
-    {
-    }
+	struct _LiquidInfo {
+		struct LiquidProvider {
+			id owner;
+			array<uint64, MAX_TOKENS> tokenContributions;
+			array<uint64, MAX_TOKENS> rewardDebts;
+		};
+		array<CreateLiquid_input::TokenInfo, MAX_TOKENS> tokens;
+		id creator;
+		uint64 totalLiquidity;
+		uint64 fee;
+		array<LiquidProvider, 16777216> liquidProviders;
+	};
+
+	array<_LiquidInfo, 16777216> _liquids;
 
     // declare structs
 	struct _BigNumToStr_input {
@@ -282,7 +301,7 @@ private:
 	};
 	struct _BalanceOfMicroToken_output {
 		uint64 balance;
-	}
+	};
 
 	struct _BigStrToNum_input {
 		uint8 len;
@@ -392,44 +411,44 @@ private:
         id issuer;
         uint64 assetName;
         uint64 microTokenAmount;
-    }
+    };
     struct _MintMicroToken_output
     {
         uint64 mintedMicroTokenAmount;
-    }
+    };
 
     struct _BurnMicroToken_input
     {
         id issuer;
         uint64 assetName;
         uint64 microTokenAmount;
-    }
+    };
     struct _BurnMicroToken_output
     {
         uint64 burntMicroTokenAmount;
-    }
+    };
 
     struct _LockExpensiveToken_input
     {
         id issuer;
         uint64 assetName;
         sint64 expensiveTokenAmount;
-    }
+    };
     struct _LockExpensiveToken_output
     {
         sint64 lockedExpensiveTokenAmount;
-    }
+    };
 
     struct _UnLockExpensiveToken_input
     {
         id issuer;
         uint64 assetName;
         sint64 expensiveTokenAmount;
-    }
+    };
     struct _UnLockExpensiveToken_output
     {
         sint64 unLockedExpensiveTokenAmount;
-    }
+    };
     
     _
 
@@ -489,7 +508,7 @@ private:
     {
         sint64 _a; // input number
         uint64 _p; // power of ten
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigNumToStr)
         locals._a = input.a;
         locals._p = 1;
@@ -529,7 +548,7 @@ private:
         uint8_128 _tempa;
         uint8_128 _tempb;
         uint8_128 _tempResult;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigPlus)
 		// checking if a is positive
 		for(uint8 i = 0; i < input.alen; i++) {
@@ -584,7 +603,7 @@ private:
 		uint8_128 _tempResult;
 		bit _borrow;
 		uint8 _zeroCount;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigMinus)
 		// checking if the result would be positive
 		if (input.blen > input.alen) {
@@ -639,7 +658,7 @@ private:
 		uint8_128 _tempResult;
 		uint8 _length;
 		bit _zeroCheck;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigMultiply)
 		if(input.a.get(0) == '-') {     // when a is negative
 			// checking if a is number
@@ -722,7 +741,7 @@ private:
 		uint8_128 _current;
 		uint8 _currentLen;
 		bit _flag;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigDiv)
 		locals._tempalen = 0;
 		locals._tempblen = 0;
@@ -858,7 +877,7 @@ private:
 		uint8_128 _current;
 		uint8 _currentLen;
 		bit _flag;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigModulus)
 		locals._tempalen = 0;
 		locals._tempblen = 0;
@@ -973,7 +992,7 @@ private:
     {
 		uint8 _tlena;
 		uint8 _tlenb;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigGreaterOrEqual)
         // checking if a is positive
 		for(uint8 i = 0; i < input.alen; i++) {
@@ -1023,7 +1042,7 @@ private:
     {
 		uint8 _tlena;
 		uint8 _tlenb;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigLessOrEqual)
         // checking if a is positive
 		for(uint8 i = 0; i < input.alen; i++) {
@@ -1073,7 +1092,7 @@ private:
     {
 		uint8 _tlena;
 		uint8 _tlenb;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigGreater)
 		// checking if a is positive
 		for(uint8 i = 0; i < input.alen; i++) {
@@ -1123,7 +1142,7 @@ private:
     {
         uint8 _tlena;
 		uint8 _tlenb;
-    }
+    };
     PRIVATE_FUNCTION_WITH_LOCALS(_BigLess)
         // checking if a is positive
 		for(uint8 i = 0; i < input.alen; i++) {
@@ -1174,7 +1193,7 @@ private:
     {
         bool _balanceFound;
         _MicroTokenBalance _newBalance;
-    }
+    };
     PRIVATE_PROCEDURE_WITH_LOCALS(_MintMicroToken)
         locals._balanceFound = false;
         output.mintedMicroTokenAmount = 0;
@@ -1208,7 +1227,7 @@ private:
     struct _BurnMicroToken_locals
     {
         bool _balanceFound;
-    }
+    };
     PRIVATE_PROCEDURE_WITH_LOCALS(_BurnMicroToken)
         locals._balanceFound = false;
         output.burntMicroTokenAmount = 0;
@@ -1235,7 +1254,7 @@ private:
     struct _LockExpensiveToken_locals
     {
         
-    }
+    };
     PRIVATE_PROCEDURE_WITH_LOCALS(_LockExpensiveToken)
 		if (qpi.numberOfPossessedShares(input.issuer, input.assetName, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.expensiveTokenAmount)
 		{
@@ -1252,7 +1271,7 @@ private:
     {
 		_BalanceOfMicroToken_input _balanceOfMicroToken_input;
 		_BalanceOfMicroToken_output _balanceOfMicroToken_output;
-    }
+    };
     PRIVATE_PROCEDURE_WITH_LOCALS(_UnLockExpensiveToken)
 		locals._balanceOfMicroToken_input.issuer = input.issuer;
 		locals._balanceOfMicroToken_input.assetName = input.assetName;
@@ -1288,7 +1307,7 @@ private:
 	{
 		_BalanceOfMicroToken_input _balanceOfMicroToken_input;
 		_BalanceOfMicroToken_output _balanceOfMicroToken_output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS(BalanceOfMicroToken)
 		locals._balanceOfMicroToken_input.issuer = input.issuer;
 		locals._balanceOfMicroToken_input.assetName = input.assetName;
@@ -1301,7 +1320,7 @@ private:
 	{
 		_BigNumToStr_input _input;
 		_BigNumToStr_output _output;
-	}
+	};
     PUBLIC_FUNCTION_WITH_LOCALS(BigNumToStr)
 		locals._input.a = input.a;
 		CALL(_BigNumToStr, locals._input, locals._output);
@@ -1313,7 +1332,7 @@ private:
 	{
 		_BigStrToNum_input _input;
 		_BigStrToNum_output _output;
-	}
+	};
     PUBLIC_FUNCTION_WITH_LOCALS(BigStrToNum)
 		locals._input.len = input.len;
 		locals._input.a = input.a;
@@ -1325,7 +1344,7 @@ private:
 	{
 		_BigPlus_input _input;
 		_BigPlus_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS(BigPlus)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1340,7 +1359,7 @@ private:
 	{
 		_BigMinus_input _input;
 		_BigMinus_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS(BigMinus)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1355,7 +1374,7 @@ private:
 	{
 		_BigMultiply_input _input;
 		_BigMultiply_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS(BigMultiply)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1370,7 +1389,7 @@ private:
 	{
 		_BigDiv_input _input;
 		_BigDiv_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS(BigDiv)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1385,7 +1404,7 @@ private:
 	{
 		_BigModulus_input _input;
 		_BigModulus_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS(BigModulus)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1400,7 +1419,7 @@ private:
 	{
 		_BigGreaterOrEqual_input _input;
 		_BigGreaterOrEqual_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS (BigGreaterOrEqual)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1414,7 +1433,7 @@ private:
 	{
 		_BigLessOrEqual_input _input;
 		_BigLessOrEqual_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS (BigLessOrEqual)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1428,7 +1447,7 @@ private:
 	{
 		_BigGreater_input _input;
 		_BigGreater_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS (BigGreater)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1442,7 +1461,7 @@ private:
 	{
 		_BigLess_input _input;
 		_BigLess_output _output;
-	}
+	};
 	PUBLIC_FUNCTION_WITH_LOCALS (BigLess)
 		locals._input.alen = input.alen;
 		locals._input.blen = input.blen;
@@ -1458,8 +1477,7 @@ private:
     {
         bool _allowanceFound;
         _MicroTokenAllowance _newAllowance;
-    }
-
+    };
     PUBLIC_PROCEDURE_WITH_LOCALS(ApproveMicroToken)
         if (qpi.invocationReward() > 0)
         {
@@ -1499,10 +1517,7 @@ private:
         bool _balanceFound;
         bool _recipientBalanceFound;
         _MicroTokenBalance _newBalance;
-    }
-
-    _
-
+    };
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferMicroToken)
         if (qpi.invocationReward() > 0)
         {
@@ -1561,8 +1576,7 @@ private:
         bool _spenderBalanceFound;
         bool _recipientBalanceFound;
         _MicroTokenBalance newBalance;
-    }
-
+    };
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferFromMicroToken)
         if (qpi.invocationReward() > 0)
         {
@@ -1644,7 +1658,7 @@ private:
 		_MintMicroToken_input _mintMicroToken_input;
 		_MintMicroToken_output _mintMicroToken_output;
 		id _zeroIssuer;
-	}
+	};
     PUBLIC_PROCEDURE_WITH_LOCALS(ConvertToMicroToken)
 		if (qpi.invocationReward() > 0)
 		{
@@ -1684,7 +1698,7 @@ private:
 		_UnLockExpensiveToken_output _unLockExpensiveToken_output;
 		_BurnMicroToken_input _burnMicroToken_input;
 		_BurnMicroToken_output _burnMicroToken_output;
-	}
+	};
     PUBLIC_PROCEDURE_WITH_LOCALS(ConvertToExpensiveToken)
 		if (qpi.invocationReward() > 0)
 		{
@@ -1718,6 +1732,7 @@ private:
     // write PUBLIC_PROCEDURE
 
     PUBLIC_PROCEDURE(CreateLiquid)
+		if(input.tokens.length)
 
     _
 
