@@ -1,8 +1,11 @@
 using namespace QPI;
 
+#define LIQUIDS_LENGTH 65536
 #define MILLION 1000000
 #define VLIQUID_CONTRACTID _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 7)
 #define MAX_TOKENS 5
+#define QWALLET_TOKEN 23720092042876753ULL
+#define QWALLET_ISSUER _mm256_set_epi8(159, 170, 86, 88, 138, 163, 10, 22, 193, 210, 63, 118, 200, 26, 123, 233, 100, 223, 40, 231, 166, 64, 98, 26, 117, 108, 211, 34, 206, 186, 192, 98);
 
 struct VLIQUID2
 {
@@ -215,11 +218,15 @@ public:
 			uint8 weight;
 		};
         array<TokenInfo, MAX_TOKENS> tokens;
-		uint64 fee;
+		uint8 tokenLength;
+		sint64 quShares;
+		uint8 quWeight;
+		uint16 initialLiquid;
+		uint64 feeRate;
     };
     struct CreateLiquid_output
     {
-		uint64 poolId;
+		uint64 liquidId;
     };
 
     struct AddLiquidity_input
@@ -273,17 +280,21 @@ private:
 	struct _LiquidInfo {
 		struct LiquidProvider {
 			id owner;
-			array<uint64, MAX_TOKENS> tokenContributions;
-			array<uint64, MAX_TOKENS> rewardDebts;
+			uint64 tokenContributions;
 		};
 		array<CreateLiquid_input::TokenInfo, MAX_TOKENS> tokens;
-		id creator;
-		uint64 totalLiquidity;
-		uint64 fee;
+		uint8 tokenLength;
+		uint64 quBalance;
+		uint8 quWeight;
+		uint16 totalWeight;
+		uint64 totalLiquid;
+		uint16 feeRate;
 		array<LiquidProvider, 16777216> liquidProviders;
+		id creator;
 	};
 
-	array<_LiquidInfo, 16777216> _liquids;
+	array<_LiquidInfo, LIQUIDS_LENGTH> _liquids;
+	uint64 _liquidsCount;
 
     // declare structs
 	struct _BigNumToStr_input {
@@ -449,7 +460,29 @@ private:
     {
         sint64 unLockedExpensiveTokenAmount;
     };
-    
+
+	static bool isTokenInLiquid(_LiquidInfo& _liquid, id _issuer, uint64 _assetName)
+	{
+		for(int i = 0; i < MAX_TOKENS; i ++) {
+			const CreateLiquid_input::TokenInfo& token = _liquid.tokens.get(i);
+			if (token.issuer == _issuer && token.assetName = _assetName) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	static uint8 getTokenIndex(_LiquidInfo& _liquid, id _issuer, uint64 _assetName)
+	{
+		for(uint8 i = 0; i < MAX_TOKENS; i ++) {
+			const CreateLiquid_input::TokenInfo& token = _liquid.tokens.get(i);
+			if (token.issuer == _issuer && token.assetName == _assetName) {
+				return i;
+			}
+		}
+		// if not found, return MAX_TOKENS
+		return MAX_TOKENS;
+	}
     _
 
     // write PRIVATE_FUNCTION
@@ -1726,18 +1759,75 @@ private:
 			CALL(_UnLockExpensiveToken, locals._unLockExpensiveToken_input, locals._unLockExpensiveToken_output);
 			output.expensiveTokenAmount = locals._unLockExpensiveToken_output.expensiveTokenAmount;
 		}
-    
+
     _
 
+	struct CreateLiquid_locals {
+		_LiquidInfo _newLiquid;
+		uint64 _liquids_length;
+		uint16 _totalWeight;
+	};
+    PUBLIC_PROCEDURE_WITH_LOCALS(CreateLiquid)
+		if(qpi.invocationReward() < input.quShares) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		} else if(qpi.invocationReward() > input.quShares) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.quShares);
+		}
+
+		// The first token must be QWALLET
+		const CreateLiquid_input::TokenInfo& _qwalletToken = input.tokens.get(0);
+		if(_qwalletToken.issuer != QWALLET_ISSUER || _qwalletToken.assetName != QWALLET_TOKEN)
+		{
+			return;
+		}
+
+		for(uint8 i = 0; i < MAX_TOKENS; i ++) {
+			const CreateLiquid_input::TokenInfo& _token_i = input.tokens.get(i);
+			
+			// The other tokens must not be QWALLET
+			if(i > 0 && _token_i.issuer == QWALLET_ISSUER && _token_i.assetName == QWALLET_TOKEN) {
+				return;
+			}
+
+			// Token weight must be greater than 0
+			if (_token_i.weight <= 0) {
+				return;
+			}
+			
+			// Token shares must be greater than initial balance
+			if (qpi.numberOfPossessedShares(_token_i.issuer, _token_i.assetName, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < _token_i.balance) {
+				return;
+			}
+			
+			qpi.transferShareOwnershipAndPossession(_token_i.assetName, _token_i.issuer, qpi.invocator(), qpi.invocator(), _token_i.balance, VLIQUID_CONTRACTID);
+
+			locals._totalWeight += _token_i.weight;
+		}
+
+		// QWALLET weight must be greater than 10%
+		if(_qwalletToken * 100 / locals._totalWeight < 10) {
+			return;
+		}
+
+		locals._newLiquid = _LiquidInfo({
+			tokens: input.tokens,
+			tokenLength: input.tokenLenght,
+			quBalance: input.quShares,
+			quWeight: quWeight,
+			totalWeight: locals._totalWeight,
+			totalLiquid: input.initialLiquid,
+			feeRate: input.feeRate,
+			creator: qpi.invocator(),
+		});
+		state._liquids.set(state._liquidsCount, locals._newLiquid);
+		output.liquidId = state._liquidsCount;
+		state._liquidsCount ++;
+    _
     // write PUBLIC_PROCEDURE
 
-    PUBLIC_PROCEDURE(CreateLiquid)
-		if(input.tokens.length)
-
-    _
-
     PUBLIC_PROCEDURE(AddLiquidity)
-    
+
     _
 
     PUBLIC_PROCEDURE(RemoveLiquidity)
