@@ -305,6 +305,7 @@ private:
 		uint64 totalLiquid;
 		uint16 feeRate;
 		array<LiquidProvider, 16777216> liquidProviders;
+		uint64 liquidProvidersCount;
 		id creator;
 	};
 
@@ -1786,6 +1787,7 @@ private:
 		_LiquidInfo _newLiquid;
 		uint16 _totalWeight;
 		array<_LiquidInfo::TokenInfo, MAX_TOKENS> _tokens;
+		array<_LiquidInfo::LiquidProvider, 16777216> _liquidProviders;
 	};
 
 	// Public procedure to create a new liquidity pool
@@ -1819,6 +1821,11 @@ private:
 			// Validate token weight (must be > 0)
 			if (_nthToken.weight <= 0) {
 				return; // Error: token weight must be greater than 0
+			}
+
+			// Validate token balance (must be > 0)
+			if (_nthToken.balance <= 0) {
+				return; // Error: initial token balance must be greater than 0
 			}
 
 			// Handle MicroToken specific validations
@@ -1881,6 +1888,12 @@ private:
 			return; // Error: QWALLET weight must be greater than 10%
 		}
 
+		// Initialize the first liquid provider with the invocator's contribution
+		locals._liquidProviders.set(0, _LiquidInfo::LiquidProvider({
+			owner: qpi.invocator(),
+			tokenContributions: initialLiquid
+		}))
+
 		// Create a new liquid pool
 		locals._newLiquid = _LiquidInfo({
 			tokens: input.tokens,
@@ -1890,6 +1903,8 @@ private:
 			totalWeight: locals._totalWeight,
 			totalLiquid: input.initialLiquid,
 			feeRate: input.feeRate,
+			liquidProviders: locals._liquidProviders,
+			liquidProvidersCount: 1,
 			creator: qpi.invocator()
 		});
 
