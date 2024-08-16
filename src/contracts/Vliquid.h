@@ -307,6 +307,7 @@ private:
 		array<LiquidProvider, 16777216> liquidProviders;
 		uint64 liquidProvidersCount;
 		id creator;
+		bool isCreated;
 	};
 
 	array<_LiquidInfo, LIQUIDS_LENGTH> _liquids;
@@ -479,9 +480,10 @@ private:
 
 	static bool _isTokenInLiquid(_LiquidInfo& _liquid, id _issuer, uint64 _assetName)
 	{
-		for(int i = 0; i < MAX_TOKENS; i ++) {
-			const CreateLiquid_input::TokenInfo& token = _liquid.tokens.get(i);
-			if (token.issuer == _issuer && token.assetName = _assetName) {
+		uint8 _tokenLength = _liquid.tokenLength;
+		for(int i = 0; i < _tokenLength; i ++) {
+			const _LiquidInfo::TokenInfo& _token = _liquid.tokens.get(i);
+			if (_token.issuer == _issuer && _token.assetName = _assetName) {
 				return true;
 			}
 		}
@@ -490,8 +492,9 @@ private:
 	
 	static uint8 _getTokenIndex(_LiquidInfo& _liquid, id _issuer, uint64 _assetName)
 	{
-		for(uint8 i = 0; i < MAX_TOKENS; i ++) {
-			const CreateLiquid_input::TokenInfo& token = _liquid.tokens.get(i);
+		uint8 _tokenLength = _liquid.tokenLength;
+		for(uint8 i = 0; i < _tokenLength; i ++) {
+			const _LiquidInfo::TokenInfo& token = _liquid.tokens.get(i);
 			if (token.issuer == _issuer && token.assetName == _assetName) {
 				return i;
 			}
@@ -500,10 +503,28 @@ private:
 		return MAX_TOKENS;
 	}
 
-	static uint64 _allowance(id owner, id spender)
+	static _LiquidInfo::LiquidProvider& _findOrCreateProvider(_LiquidInfo& _liquid, id _provider)
 	{
-		
+		uint64 _liquidProvidersCount = _liquid.liquidProvidersCount;
+
+		// Search for the provider
+		for(uint64 i = 0; uint64 i < _liquidProvidersCount; i ++) {
+			if(_liquid._liquidProviders.get(i).owner == _provider){
+				return _liquid._liquidProviders.get(i);
+			}
+		}
+
+		// Create a new provider if not found
+		_LiquidInfo::LiquidProvider _newProvider{_provider, 0};
+
+		// Add the new provider to the list
+		_liquid.liquidProviders.set(_liquidProvidersCount, _newProvider);
+		_liquid.liquidProvidersCount ++;
+
+		// Return a reference to the newly added provider
+		return _liquid.liquidProviders.get(_liquid.liquidProvidersCount - 1);
 	}
+
     _
 
     // write PRIVATE_FUNCTION
@@ -1788,6 +1809,7 @@ private:
 		uint16 _totalWeight;
 		array<_LiquidInfo::TokenInfo, MAX_TOKENS> _tokens;
 		array<_LiquidInfo::LiquidProvider, 16777216> _liquidProviders;
+		CreateLiquid_input::TokenInfo _qwalletToken;
 	};
 
 	// Public procedure to create a new liquidity pool
@@ -1804,8 +1826,8 @@ private:
 		}
 
 		// Ensure the first token is QWALLET
-		const CreateLiquid_input::TokenInfo& _qwalletToken = input.tokens.get(0);
-		if(_qwalletToken.issuer != QWALLET_ISSUER || _qwalletToken.assetName != QWALLET_TOKEN)
+		locals._qwalletToken = input.tokens.get(0);
+		if(locals._qwalletToken.issuer != QWALLET_ISSUER || locals._qwalletToken.assetName != QWALLET_TOKEN)
 		{
 			return; // Error: the first token must be QWALLET
 		}
@@ -1832,12 +1854,7 @@ private:
 			if(_nthToken.isMicroToken)
 			{
 				// Ensure MicroToken allowance is sufficient compared to initial balance
-				MicroTokenAllowance_input _microTokenAllowance_input = MicroTokenAllowance_input({
-					issuer: _nthToken.issuer,
-					assetName: _nthToken.assetName,
-					recipient: VLIQUID_CONTRACTID,
-					spender: qpi.invocator()
-				});
+				MicroTokenAllowance_input _microTokenAllowance_input{_nthToken.issuer, _nthToken.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
 				MicroTokenAllowance_output _microTokenAllowance_output;
 				CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
 				if (_microTokenAllowance_output.balance < _nthToken.balance)
@@ -1846,24 +1863,14 @@ private:
 				}
 
 				// Ensure MicroToken balance is sufficient compared to initial balance
-				BalanceOfMicroToken_input _balanceOfMicroToken_input = BalanceOfMicroToken_input({
-					issuer: _nthToken.issuer,
-					assetName: _nthToken.assetName,
-					owner: qpi.invocator()
-				});
+				BalanceOfMicroToken_input _balanceOfMicroToken_input{_nthToken.issuer, _nthToken.assetName, qpi.invocator()};
 				BalanceOfMicroToken_output _balanceOfMicroToken_output;
 				if(_balanceOfMicroToken_output.balance < _nthToken.balance){
 					return; // Error: insufficient MicroToken balance
 				}
 
 				// Execute the MicroToken transfer
-				TransferFromMicroToken_input _transferFromMicroToken_input = TransferFromMicroToken_input({
-					issuer: _nthToken.issuer,
-					assetName: _nthToken.assetName,
-					spender: qpi.invocator(),
-					recipient: VLIQUID_CONTRACTID,
-					microTokenAmount: _nthToken.balance
-				});
+				TransferFromMicroToken_input _transferFromMicroToken_input{_nthToken.issuer, _nthToken.assetName, qpi.invocator(), VLIQUID_CONTRACTID, _nthToken.balance};
 				TransferFromMicroToken_output _transferFromMicroToken_output;
 
 				CALL(TransferFromMicroToken, _transferFromMicroToken_input, _transferFromMicroToken_output);
@@ -1884,7 +1891,7 @@ private:
 		}
 
 		// Validate that QWALLET's weight is greater than 10% of the total weight
-		if(_qwalletToken.weight * 100 / locals._totalWeight < 10) {
+		if(locals._qwalletToken.weight * 100 / locals._totalWeight < 10) {
 			return; // Error: QWALLET weight must be greater than 10%
 		}
 
@@ -1895,18 +1902,7 @@ private:
 		}))
 
 		// Create a new liquid pool
-		locals._newLiquid = _LiquidInfo({
-			tokens: input.tokens,
-			tokenLength: input.tokenLength,
-			quBalance: input.quShares,
-			quWeight: input.quWeight,
-			totalWeight: locals._totalWeight,
-			totalLiquid: input.initialLiquid,
-			feeRate: input.feeRate,
-			liquidProviders: locals._liquidProviders,
-			liquidProvidersCount: 1,
-			creator: qpi.invocator()
-		});
+		locals._newLiquid = _LiquidInfo{input.tokens, input.tokenLength, input.quShares, input.quWeight, locals._totalWeight, input.initialLiquid, input.feeRate, locals._liquidProviders, 1, qpi.invocator(), true};
 
 		// Store the newly created liquid pool and assign an ID
 		state._liquids.set(state._liquidsCount, locals._newLiquid);
@@ -1914,20 +1910,68 @@ private:
 		state._liquidsCount ++;
 	_
 
-    // write PUBLIC_PROCEDURE
-
-    PUBLIC_PROCEDURE(AddLiquid)
-		// The first token must be QWALLET
-		const AddLiquid_input::TokenInfo& _qwalletToken = input.tokens.get(0);
-		if(_qwalletToken.issuer != QWALLET_ISSUER || _qwalletToken.assetName != QWALLET_TOKEN)
-		{
+	struct AddLiquid_locals {
+		_LiquidInfo _liquid;
+		AddLiquid_input::TokenInfo _qwalletToken;
+	}
+    PUBLIC_PROCEDURE_WITH_LOCALS(AddLiquid)
+		if(qpi.invocationReward() < input.quShares) {
+			// Transfer invocation reward if it's less than required quShares
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
+		} else if(qpi.invocationReward() > input.quShares) {
+			// Transfer excess invocation reward if it's more than required quShares
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.quShares);
+		}
+
+		// Ensure the first token is QWALLET
+		locals._qwalletToken = input.tokens.get(0);
+		if(locals._qwalletToken.issuer != QWALLET_ISSUER || locals._qwalletToken.assetName != QWALLET_TOKEN)
+		{
+			return; // Error: the first token must be QWALLET
+		}
+
+		locals._liquid = state._liquids.get(input.liquidId);
+
+		// Ensure the liquid is created
+		if(!locals._liquid.isCreated) {
+			return; // Error: the liquid is not created
+		}
+
+		// Find or create liquidProvider
+
+
+		for(uint8 i = 0; i < locals._liquid.tokenLength; i ++) {
+			const AddLiquid_input::TokenInfo& _nthToken = input.tokens.get(i);
+
+			// Ensure the other tokens is not QWALLET
+			if(i > 0 && _nthToken.issuer == QWALLET_ISSUER && _nthToken.assetName == QWALLET_TOKEN) {
+				return; // Error: other tokens can't be QWALLET
+			}
+
+			const uint8 _tokenIndex = _getTokenIndex(locals._liquid, _nthToken.issuer, _nthToken.assetName);
+			// Ensure the tokens is in the liquid
+			if(_tokenIndex == MAX_TOKENS){
+				return; // Error: token is in the liquid
+			}
+			
+			_LiquidInfo::LiquidProvider& provider = _findOrCreateProvider(locals._liquid, qpi.invocator());
+			// Handle MicroToken specific validations
+			if(_nthToken.isMicroToken)
+			{
+
+			}
+			else
+			{
+				
+			}
 		}
 
 
 
-
     _
+
+    // write PUBLIC_PROCEDURE
 
     PUBLIC_PROCEDURE(AddLiquidSingle)
 
