@@ -2,6 +2,7 @@ using namespace QPI;
 
 #define LIQUIDS_LENGTH 65536
 #define MILLION 1000000
+#define LIQUID_CREATION_FEE 100000000
 #define VLIQUID_CONTRACTID _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 7)
 #define MAX_TOKENS 5
 #define QWALLET_TOKEN 23720092042876753ULL
@@ -237,16 +238,17 @@ public:
     };
     struct AddLiquid_output
     {
-		uint64 contributions;
+		uint64 addedContribution;
     };
 
     struct RemoveLiquid_input
     {
-        
+        uint64 tokenContribution;
+		uint64 liquidId;
     };
     struct RemoveLiquid_output
     {
-
+		uint64  removedContribtion;
     };
 
     struct Swap_input
@@ -1809,13 +1811,13 @@ private:
 	// This procedure handles the validation of input tokens and 
 	// ensures that the initial conditions for creating a valid pool are met
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateLiquid)
-		if(qpi.invocationReward() < input.quShares) {
+		if(qpi.invocationReward() < input.quShares + LIQUID_CREATION_FEE) {
 			// Transfer invocation reward if it's less than required quShares
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
-		} else if(qpi.invocationReward() > input.quShares) {
+		} else if(qpi.invocationReward() > input.quShares + LIQUID_CREATION_FEE) {
 			// Transfer excess invocation reward if it's more than required quShares
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.quShares);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.quShares - LIQUID_CREATION_FEE);
 		}
 
 		// Ensure the first token is QWALLET
@@ -1993,19 +1995,19 @@ private:
 		// Update the liquid provider's contributions and the total liquidity of the liquid
 		locals._provider.tokenContributions += input.tokenContribution;
 		locals._liquid.totalLiquid += input.tokenContribution;
-		output.contributions = input.tokenContribution;
+		output.addedContribution = input.tokenContribution;
     _
 
-    // write PUBLIC_PROCEDURE
 
-    PUBLIC_PROCEDURE(AddLiquidSingle)
+    PUBLIC_PROCEDURE_WITH_LOCALS(AddLiquidSingle)
 
     _
 
-    PUBLIC_PROCEDURE(RemoveLiquid)
+    PUBLIC_PROCEDURE_WITH_LOCALS(RemoveLiquid)
     
     _
 
+    // write PUBLIC_PROCEDURE
     PUBLIC_PROCEDURE(Swap)
     
     _
