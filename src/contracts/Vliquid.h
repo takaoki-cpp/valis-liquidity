@@ -232,15 +232,8 @@ public:
 
     struct AddLiquid_input
     {
-        struct TokenInfo {
-			id issuer;
-			uint64 assetName;
-			uint64 balance;
-			bool isMicroToken;
-		}
-		array<TokenInfo, MAX_TOKENS> tokens;
+		uint64 tokenContribution;
 		uint64 liquidId;
-		sint64 quShares;
     };
     struct AddLiquid_output
     {
@@ -1829,6 +1822,7 @@ private:
 		locals._qwalletToken = input.tokens.get(0);
 		if(locals._qwalletToken.issuer != QWALLET_ISSUER || locals._qwalletToken.assetName != QWALLET_TOKEN)
 		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return; // Error: the first token must be QWALLET
 		}
 
@@ -1837,16 +1831,19 @@ private:
 
 			// Ensure the other tokens is not QWALLET
 			if(i > 0 && _nthToken.issuer == QWALLET_ISSUER && _nthToken.assetName == QWALLET_TOKEN) {
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return; // Error: other tokens can't be QWALLET
 			}
 
 			// Validate token weight (must be > 0)
 			if (_nthToken.weight <= 0) {
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return; // Error: token weight must be greater than 0
 			}
 
 			// Validate token balance (must be > 0)
 			if (_nthToken.balance <= 0) {
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return; // Error: initial token balance must be greater than 0
 			}
 
@@ -1859,6 +1856,7 @@ private:
 				CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
 				if (_microTokenAllowance_output.balance < _nthToken.balance)
 				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					return; // Error: insufficient MicroToken allowance
 				}
 
@@ -1866,6 +1864,7 @@ private:
 				BalanceOfMicroToken_input _balanceOfMicroToken_input{_nthToken.issuer, _nthToken.assetName, qpi.invocator()};
 				BalanceOfMicroToken_output _balanceOfMicroToken_output;
 				if(_balanceOfMicroToken_output.balance < _nthToken.balance){
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					return; // Error: insufficient MicroToken balance
 				}
 
@@ -1879,6 +1878,7 @@ private:
 			{
 				// Ensure sufficient token shares for non-MicroTokens
 				if (qpi.numberOfPossessedShares(_nthToken.issuer, _nthToken.assetName, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < _nthToken.balance) {
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					return; // Error: insufficient token shares
 				}
 
@@ -1892,6 +1892,7 @@ private:
 
 		// Validate that QWALLET's weight is greater than 10% of the total weight
 		if(locals._qwalletToken.weight * 100 / locals._totalWeight < 10) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return; // Error: QWALLET weight must be greater than 10%
 		}
 
@@ -1913,62 +1914,86 @@ private:
 	struct AddLiquid_locals {
 		_LiquidInfo _liquid;
 		AddLiquid_input::TokenInfo _qwalletToken;
-	}
+		uint64 _quContribtion;
+		_LiquidInfo::LiquidProvider& _provider;
+	};
+	// Public procedure to add liquidity to an existing pool
+	// This procedure validates the additional token contributions, 
+	// calculates the corresponding QU contribution, and updates the liquidity.
+	// It ensures the liquidity pool is valid and handles both MicroToken 
+	// and regular token transfers appropriately.
     PUBLIC_PROCEDURE_WITH_LOCALS(AddLiquid)
-		if(qpi.invocationReward() < input.quShares) {
-			// Transfer invocation reward if it's less than required quShares
+		// Validate that the token contribution is greater than 0
+		if(input.tokenContribution <= 0) {
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			return;
-		} else if(qpi.invocationReward() > input.quShares) {
-			// Transfer excess invocation reward if it's more than required quShares
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.quShares);
+			return; // Error: token contribution (must be > 0)
 		}
 
-		// Ensure the first token is QWALLET
-		locals._qwalletToken = input.tokens.get(0);
-		if(locals._qwalletToken.issuer != QWALLET_ISSUER || locals._qwalletToken.assetName != QWALLET_TOKEN)
-		{
-			return; // Error: the first token must be QWALLET
-		}
-
+		// Retrieve the targeted liquid based on the provided ID
 		locals._liquid = state._liquids.get(input.liquidId);
-
-		// Ensure the liquid is created
+		
+		// Ensure the liquid has been created
 		if(!locals._liquid.isCreated) {
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return; // Error: the liquid is not created
 		}
 
-		// Find or create liquidProvider
+		// Calculate the required QU contribution based on the input token contribution
+		locals._quContribution = locals._liquid.quBalance * input.tokenContribution / locals._liquid.totalLiquid;
 
+		// Handle the invocation reward with respect to the QU contribution
+		if(qpi.invocationReward() < locals._quContribution) {
+			// Transfer invocation reward if it's less than required quContribution
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		} else if(qpi.invocationReward() > locals._quContribution) {
+			// Transfer excess invocation reward if it exceeds the required QU contribution
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals._quContribution);
 
+			locals.liquid.quBalance += locals._quContribution;
+		}
+
+		// Find or create a liquid provider entry for the invocator
+		locals._provider = _findOrCreateProvider(locals._liquid, qpi.invocator());
+
+		// Process each token in the liquidity pool
 		for(uint8 i = 0; i < locals._liquid.tokenLength; i ++) {
-			const AddLiquid_input::TokenInfo& _nthToken = input.tokens.get(i);
-
-			// Ensure the other tokens is not QWALLET
-			if(i > 0 && _nthToken.issuer == QWALLET_ISSUER && _nthToken.assetName == QWALLET_TOKEN) {
-				return; // Error: other tokens can't be QWALLET
-			}
-
-			const uint8 _tokenIndex = _getTokenIndex(locals._liquid, _nthToken.issuer, _nthToken.assetName);
-			// Ensure the tokens is in the liquid
-			if(_tokenIndex == MAX_TOKENS){
-				return; // Error: token is in the liquid
-			}
+			const _LiquidInfo::TokenInfo& _nthToken = locals._liquid.tokens.get(i);
+			uint64 _nthTokenContribution = _nthToken.balance * input.tokenContribution / locals._liquid.totalLiquid;
 			
-			_LiquidInfo::LiquidProvider& provider = _findOrCreateProvider(locals._liquid, qpi.invocator());
-			// Handle MicroToken specific validations
+			// Handle token-specific validations and transfers
 			if(_nthToken.isMicroToken)
 			{
-
+				// Validate and transfer MicroTokens
+				MicroTokenAllowance_input _microTokenAllowance_input{_nthToken.issuer, _nthToken.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
+				MicroTokenAllowance_output _microTokenAllowance_output;
+				CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
+				if (_microTokenAllowance_output.balance < _nthTokencontribution)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					return; // Error: insufficient MicroToken allowance
+				}
 			}
 			else
 			{
-				
+				// Ensure sufficient token shares for non-MicroTokens
+				if (qpi.numberOfPossessedShares(_nthToken.issuer, _nthToken.assetName, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (_nthTokenContribution / MILLION)) {
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					return; // Error: insufficient token shares
+				}
+
+				// Transfer ownership and possession of shares to this contract
+				qpi.transferShareOwnershipAndPossession(_nthToken.assetName, _nthToken.issuer, qpi.invocator(), qpi.invocator(), _nthTokenContribution / MILLION, VLIQUID_CONTRACTID);
 			}
+			
+			// Update the token balance in the liquid
+			_nthToken.balance += _nthTokenContribution;
 		}
 
-
-
+		// Update the liquid provider's contributions and the total liquidity of the liquid
+		locals._provider.tokenContributions += input.tokenContribution;
+		locals._liquid.totalLiquid += input.tokenContribution;
+		output.contributions = input.tokenContribution;
     _
 
     // write PUBLIC_PROCEDURE
