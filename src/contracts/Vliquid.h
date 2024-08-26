@@ -287,7 +287,7 @@ private:
 			uint64 assetName;
 			uint64 balance;
 			uint64 microTokenBalance;
-			uint64 normalTokenBalance;
+			uint64 expensiveTokenBalance;
 			uint8 weight;
 		};
 		struct LiquidProvider {
@@ -534,6 +534,30 @@ private:
 
 		// Return a reference to the newly added provider
 		return _liquid.liquidProviders.get(_liquid.liquidProvidersCount - 1);
+	}
+
+	static void _removeProvider(_LiquidInfo& _liquid, id _provider) {
+		uint64 _liquidProvidersCount = _liquid.liquidProvidersCount;
+
+		// Iterate through the list to find the provider
+		for (uint64 i = 0; i < _liquidProvidersCount; i ++) {
+			_LiquidInfo::LiquidProvider& _currentProvider = _liquid._liquidProviders.get(i);
+
+			// Check if the current provider mathches the one to be removed
+			if (_currentProvider.owner == _provider) {
+
+				// If it's the last provider in the list, simply decrement the count
+				if(i == _liquidProvidersCount - 1) {
+					_liquid.liquidProvidersCount --;
+				} else {
+					// Otherwise, swap the last provider and then decrement the count
+					_LiquidInfo::LiquidProvider& _lastProvider = _liquid._liquidProviders.get(_liquidProvidersCount - 1);
+					_liquid._liquidProviders.set(i, _lastProvider);
+					_liquid/liquidProvidersCount--;
+				}
+				return;
+			}
+		}
 	}
 
     _
@@ -2027,7 +2051,7 @@ private:
 				}
 
 				// Update the token balance in the liquid
-				_nthToken.normalTokenBalance += _nthTokenContribution;
+				_nthToken.expensiveTokenBalance += _nthTokenContribution;
 				_nthToken.balance += _nthTokenContribution * MILLION;
 			}
 		}
@@ -2073,8 +2097,9 @@ private:
 		// Retrieve the targeted liquid based on the provided ID
 		locals._liquid = state._liquids.get(input.liquidId);
 		
+		// Find the provider associated with the invocator
 		locals._provider = _findProvder(locals._liquid, qpi.invocator());
-		// Check if participant exists
+		// Check if the participant exists
 		if (locals._provider == nullptr) {
 			if(qpi.invocationReward() > 0) {
 				qpi.transfer(qpi.invocator(), qpi.invocationReward())
@@ -2082,29 +2107,62 @@ private:
 			return; // Error: Participant not found
 		}
 
-		// Check tokenContribution amount
+		// Check if the provider's contribution is sufficient
 		if(locals._provider.tokenContributions < input.tokenContribution) {
 			if(qpi.invocationReward() > 0) {
 				qpi.transfer(qpi.invocator(), qpi.invocationReward())
 			}
-			return;
+			return; // Error: Insufficient token contribution
 		}
 
+		// Calculate and transfer the corresponding QU tokens to the invocator
 		// QU transfer
 		uint64 _removedQuBalance = locals._liquid.quBalance * input.tokenContribution / locals._liquid.totalLiquid;
 		qpi.transfer(qpi.invocator(), _removedQuBalance);
 		locals._liquid.quBalance -= _removedQuBalance;
 
+		// Process each token in the liquid pool
 		// Token transfer
 		for(uint8 i = 0; i < locals._liquid.tokenLength; i ++) {
+			// To Do: convert some liquid expensive token to micro token
+
 			const _LiquidInfo::TokenInfo& _nthToken = locals._liquid.tokens.get(i);
 
-			uint64 _removedTokenBalance = _nthToken.balance * input.tokenContribution / locals._liquid.totalLiquid;
-			TransferMicroToken_input _transferMicroToken_input{_nthToken.issuer, _nthToken.assetName, VLIQUID_CONTRACTID, _removedTokenBalance};
+			// Calculate the micro token amount of tokens to remove
+			uint64 _removedMicroTokenBalance = _nthToken.microTokenBalance * input.tokenContribution / locals._liquid.totalLiquid;
+
+			TransferMicroToken_input _transferMicroToken_input{_nthToken.issuer, _nthToken.assetName, VLIQUID_CONTRACTID, _removedMicroTokenBalance};
 			TransferMicroToken_output _transferMicroToken_output;
 			CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
-			_nthToken.balance -= _removedTokenBalance;
+
+			// Update the micro token balance in the liquid pool
+			_nthToken.microTokenBalance -= _removedMicroTokenBalance;
+
+			// Calculate the expensive token amount of tokens to remove
+			uint64 _removedExpensiveTokenBalance = _nthToken.expensiveTokenBalance * input.tokenContribution / locals._liquid.totalLiquid;
+
+			// Update the expensive token balance in the liquid pool
+			_nthToken.expensiveTokenBalance -= _removedExpensiveTokenBalance;
+
+			qpi.transferShareOwnershipAndpossession(_nthToken.assetName, _nthToken.issuer, VLIQUID_CONTRACTID, qpi.invocator(), _removedExpensiveTokenBalance / MILLION);
+
+			// Update the token blance in the liquid pool
+			_nthToken.balance -= _removedMicroTokenBalance;
 		}
+
+		// Update the provider's contribution and the total liquid in the pool
+		locals._provider.tokenContributions -= input.tokenContribution;
+		locals._liquid.totalLiquid -= input.tokenContribution;
+
+		// If the provider has withdrawn all contributions, remove them from the poroviders list
+		if (locals._provider.tokenContributions == 0) {
+			_removeProvider(locals._liquid, qpi.invocator());
+		}
+
+		// Save the updated liquid state
+		state._liquids.set(input.liquidId, locals._liquid);
+
+		output.removedContribution = input.tokenContribution;
     _
 
     // write PUBLIC_PROCEDURE
