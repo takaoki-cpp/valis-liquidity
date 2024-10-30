@@ -202,6 +202,9 @@
     <ClInclude Include="assets\assets.h">
       <Filter>assets</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Vliquid.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
