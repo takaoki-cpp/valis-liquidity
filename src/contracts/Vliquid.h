@@ -92,6 +92,16 @@ public:
         uint64 transferredMicroTokenAmount;
     };
 
+    // Exam
+    struct ExamPublic_input
+    {
+        uint64 inputValue;
+    };
+    struct ExamPublic_output
+    {
+        uint64 outputValue;
+    };
+
 private:
     // declare state variables
     struct _MicroTokenBalance {
@@ -165,6 +175,16 @@ private:
     {
         sint64 unLockedExpensiveTokenAmount;
     };
+
+    struct _ExamPrivate_input
+    {
+        id inputValue;
+    };
+    struct _ExamPrivate_output
+    {
+        id outputValue1;
+        uint64 outputValue2;
+    };
     
 
     // write PRIVATE_FUNCTION_WITH_LOCALS
@@ -186,6 +206,16 @@ private:
 				break;
 			}
 		}
+    _
+
+    struct _ExamPrivate_locals {
+        uint64 _i;
+    };
+    PRIVATE_FUNCTION_WITH_LOCALS(_ExamPrivate)
+        locals._i = 1;
+        locals._i++;
+        output.outputValue1 = input.inputValue;
+        output.outputValue2 = locals._i;
     _
 
 	// write PRIVATE_PROCEDURE_WITH_LOCALS
@@ -295,6 +325,10 @@ private:
 		output.unLockedExpensiveTokenAmount = input.expensiveTokenAmount;
     _
     // write PUBLIC_FUNCTION
+    PUBLIC_FUNCTION(ExamPublic)
+        input.inputValue += 1;
+        output.outputValue = input.inputValue;
+    _
     // write PUBLIC_FUNCTION_WITH_LOCALS
     struct MicroTokenAllowance_locals {
         uint64 _microTokenAllowancesLength;
