@@ -642,6 +642,7 @@ private:
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(MicroTokenAllowance, 1);
         REGISTER_USER_FUNCTION(BalanceOfMicroToken, 2);
+        REGISTER_USER_FUNCTION(ExamPublic, 3);
 
         REGISTER_USER_PROCEDURE(ApproveMicroToken, 1);
         REGISTER_USER_PROCEDURE(TransferMicroToken, 2);
