@@ -1,5 +1,5 @@
 using namespace QPI;
-#define VLIQUID_CONTRACTID _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 7)
+#define VLIQUID_CONTRACTID _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 9)
 
 #define MILLION 1000000
 
@@ -112,6 +112,7 @@ private:
     };
     
     array<_MicroTokenBalance, 16777216> _microTokenBalances;
+    uint64 _microTokenBalancesLength;
 
     struct _MicroTokenAllowance {
         id recipient;
@@ -122,6 +123,7 @@ private:
     };
 
     array<_MicroTokenAllowance, 16777216> _microTokenAllowances;
+    uint64 _microTokenAllowancesLength;
 
 	struct _BalanceOfMicroToken_input {
 		id issuer;
@@ -189,13 +191,11 @@ private:
 
     // write PRIVATE_FUNCTION_WITH_LOCALS
     struct _BalanceOfMicroToken_locals {
-        uint64 _microTokenBalanceLength;
         _MicroTokenBalance _balance;
     };
 	PRIVATE_FUNCTION_WITH_LOCALS(_BalanceOfMicroToken)
 		output.balance = 0;
-        locals._microTokenBalanceLength = state._microTokenBalances.capacity();
-		for (uint64 i = 0; i < locals._microTokenBalanceLength; i ++)
+		for (uint64 i = 0; i < state._microTokenBalancesLength; i ++)
 		{
             locals._balance = state._microTokenBalances.get(i);
 			if (locals._balance.issuer == input.issuer &&
@@ -223,14 +223,12 @@ private:
     {
         bool _balanceFound;
         _MicroTokenBalance _newBalance;
-        uint64 _microTokenBalancesLength;
     };
     PRIVATE_PROCEDURE_WITH_LOCALS(_MintMicroToken)
         locals._balanceFound = false;
         output.mintedMicroTokenAmount = 0;
         // Iterate over balances to find the matching balance for the issuer and asset
-        locals._microTokenBalancesLength = state._microTokenBalances.capacity();
-        for (uint64 i = 0; i < locals._microTokenBalancesLength; ++i)
+        for (uint64 i = 0; i < state._microTokenBalancesLength; ++i)
         {
             locals._newBalance= state._microTokenBalances.get(i);
             if (locals._newBalance.issuer == input.issuer
@@ -253,7 +251,8 @@ private:
             locals._newBalance.assetName = input.assetName;
             locals._newBalance.owner = qpi.invocator();
             locals._newBalance.balance = input.microTokenAmount;
-            state._microTokenBalances.set(locals._microTokenBalancesLength + 1, locals._newBalance);
+            state._microTokenBalances.set(state._microTokenBalancesLength + 1, locals._newBalance);
+            state._microTokenBalancesLength++;
             output.mintedMicroTokenAmount = input.microTokenAmount;
         }
     _
@@ -261,7 +260,6 @@ private:
     struct _BurnMicroToken_locals
     {
         bool _balanceFound;
-        uint64 _microTokenBalancesLength;
         _MicroTokenBalance _newBalance;
     };
     PRIVATE_PROCEDURE_WITH_LOCALS(_BurnMicroToken)
@@ -269,8 +267,7 @@ private:
         output.burntMicroTokenAmount = 0;
 
         // Iterate over balances to find the matching balance for the issuer and asset
-        locals._microTokenBalancesLength = state._microTokenBalances.capacity();
-        for (uint64 i = 0; i < locals._microTokenBalancesLength; i ++)
+        for (uint64 i = 0; i < state._microTokenBalancesLength; i ++)
         {
             locals._newBalance = state._microTokenBalances.get(i);
             if (locals._newBalance.issuer == input.issuer
@@ -331,13 +328,11 @@ private:
     _
     // write PUBLIC_FUNCTION_WITH_LOCALS
     struct MicroTokenAllowance_locals {
-        uint64 _microTokenAllowancesLength;
         _MicroTokenAllowance _allowance;
     };
     PUBLIC_FUNCTION_WITH_LOCALS(MicroTokenAllowance)
         output.balance = 0;
-        locals._microTokenAllowancesLength = state._microTokenAllowances.capacity();
-        for (uint64 i = 0; i < locals._microTokenAllowancesLength; i ++)
+        for (uint64 i = 0; i < state._microTokenAllowancesLength; i ++)
         {
             locals._allowance = state._microTokenAllowances.get(i);
             if (locals._allowance.issuer == input.issuer &&
@@ -368,7 +363,6 @@ private:
     {
         bool _allowanceFound;
         _MicroTokenAllowance _newAllowance;
-        uint64 _microTokenAllowanceLength;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(ApproveMicroToken)
         if (qpi.invocationReward() > 0)
@@ -377,8 +371,7 @@ private:
         }
         
         locals._allowanceFound = false;
-        locals._microTokenAllowanceLength = state._microTokenAllowances.capacity();
-        for (uint64 i = 0; i < locals._microTokenAllowanceLength; i ++)
+        for (uint64 i = 0; i < state._microTokenAllowancesLength; i ++)
         {
             locals._newAllowance = state._microTokenAllowances.get(i);
             if (locals._newAllowance.issuer == input.issuer &&
@@ -402,7 +395,8 @@ private:
             locals._newAllowance.recipient = input.recipient;
             locals._newAllowance.balance = input.microTokenAmount;
 
-            state._microTokenAllowances.set(locals._microTokenAllowanceLength + 1, locals._newAllowance);
+            state._microTokenAllowances.set(state._microTokenAllowancesLength + 1, locals._newAllowance);
+            state._microTokenAllowancesLength++;
             output.approvedMicroTokenAmount = input.microTokenAmount;
         }
     _
@@ -412,7 +406,6 @@ private:
         bool _balanceFound;
         bool _recipientBalanceFound;
         _MicroTokenBalance _newBalance;
-        uint64 _microTokenBalanceLength;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferMicroToken)
         if (qpi.invocationReward() > 0)
@@ -422,8 +415,7 @@ private:
         output.transferredMicroTokenAmount = 0;
         locals._balanceFound = false;
         locals._recipientBalanceFound = false;
-        locals._microTokenBalanceLength = state._microTokenBalances.capacity();
-        for (uint64 i = 0; i < locals._microTokenBalanceLength; i ++)
+        for (uint64 i = 0; i < state._microTokenBalancesLength; i ++)
         {
             locals._newBalance = state._microTokenBalances.get(i);
             if (locals._newBalance.issuer == input.issuer &&
@@ -442,7 +434,7 @@ private:
         }
         if (locals._balanceFound)
         {
-            for (uint64 i = 0; i < locals._microTokenBalanceLength; i ++)
+            for (uint64 i = 0; i < state._microTokenBalancesLength; i ++)
             {
                 locals._newBalance = state._microTokenBalances.get(i);
                 if (locals._newBalance.issuer == input.issuer &&
@@ -465,7 +457,8 @@ private:
                 locals._newBalance.assetName = input.assetName;
                 locals._newBalance.owner = input.recipient;
                 locals._newBalance.balance = input.microTokenAmount;
-                state._microTokenBalances.set(locals._microTokenBalanceLength + 1, locals._newBalance);
+                state._microTokenBalances.set(state._microTokenBalancesLength + 1, locals._newBalance);
+                state._microTokenBalancesLength++;
                 output.transferredMicroTokenAmount = input.microTokenAmount;
             }
         }
@@ -476,8 +469,6 @@ private:
         bool _allowanceFound;
         bool _spenderBalanceFound;
         bool _recipientBalanceFound;
-        uint64 _microTokenAllowanceLength;
-        uint64 _microTokenBalancesLength;
         _MicroTokenBalance _newBalance;
         _MicroTokenAllowance _newAllowance;
     };
@@ -489,10 +480,8 @@ private:
         locals._allowanceFound = false;
         locals._spenderBalanceFound = false;
         locals._recipientBalanceFound = false;
-        locals._microTokenAllowanceLength = state._microTokenAllowances.capacity();
-        locals._microTokenBalancesLength = state._microTokenBalances.capacity();
         output.transferredMicroTokenAmount = 0;
-        for (uint64 i = 0; i < locals._microTokenAllowanceLength; i ++)
+        for (uint64 i = 0; i < state._microTokenAllowancesLength; i ++)
         {
             locals._newAllowance = state._microTokenAllowances.get(i);
             if (locals._newAllowance.issuer == input.issuer &&
@@ -513,7 +502,7 @@ private:
 
         if (locals._allowanceFound)
         {
-            for (uint64 i = 0; i < locals._microTokenBalancesLength; i ++)
+            for (uint64 i = 0; i < state._microTokenBalancesLength; i ++)
             {
                 locals._newBalance = state._microTokenBalances.get(i);
                 if (locals._newBalance.issuer == input.issuer &&
@@ -532,7 +521,7 @@ private:
             }
             if (locals._spenderBalanceFound)
             {
-                for (uint64 i = 0; i < locals._microTokenBalancesLength; i ++)
+                for (uint64 i = 0; i < state._microTokenBalancesLength; i ++)
                 {
                     locals._newBalance = state._microTokenBalances.get(i);
                     if (locals._newBalance.issuer == input.issuer &&
@@ -554,7 +543,8 @@ private:
                     locals._newBalance.assetName = input.assetName;
                     locals._newBalance.owner = input.recipient;
                     locals._newBalance.balance = input.microTokenAmount;
-                    state._microTokenBalances.set(locals._microTokenBalancesLength + 1, locals._newBalance);
+                    state._microTokenBalances.set(state._microTokenBalancesLength + 1, locals._newBalance);
+                    state._microTokenBalancesLength++;
                     output.transferredMicroTokenAmount = input.microTokenAmount;
                 }
             }
