@@ -1,6 +1,7 @@
 using namespace QPI;
 #define VLIQUID_CONTRACTID _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 9)
-const id VALIS_ISSUER_ID = _mm256_set_epi8(1, 106, 63, 191, 132, 142, 115, 179, 198, 179, 131, 37, 172, 24, 131, 84, 162, 130, 67, 218, 71, 147, 6, 61, 53, 31, 56, 212, 172, 63, 190, 223);
+#define QWALLET_ISSUER_ID _mm256_set_epi8(25, 178, 91, 147, 113, 184, 41, 95, 201, 196, 83, 72, 72, 121, 112, 207, 56, 34, 123, 70, 46, 238, 205, 207, 42, 107, 220, 170, 172, 141, 173, 116)
+#define VALIS_ISSUER_ID _mm256_set_epi8(223, 190, 63, 172, 212, 56, 31, 53, 61, 6, 147, 71, 218, 67, 130, 162, 84, 131, 24, 172, 37, 131, 179, 198, 179, 115, 142, 132, 191, 63, 106, 1)
 
 #define MILLION 1000000
 
@@ -102,6 +103,8 @@ public:
     struct ExamPublic_output
     {
         uint64 outputValue;
+        id assetName1;
+        id assetName2;
     };
 
 private:
@@ -325,10 +328,13 @@ private:
     _
     // write PUBLIC_FUNCTION
     PUBLIC_FUNCTION(ExamPublic)
+        input.inputValue += 1;
         if (input.assetName == VALIS_ISSUER_ID) {
-            input.inputValue += 1;
+            input.inputValue += 2;
         }
         output.outputValue = input.inputValue;
+        output.assetName1 = input.assetName;
+        output.assetName2 = VALIS_ISSUER_ID;
     _
     // write PUBLIC_FUNCTION_WITH_LOCALS
     struct MicroTokenAllowance_locals {
