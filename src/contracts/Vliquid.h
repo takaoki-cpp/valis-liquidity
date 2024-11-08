@@ -1,5 +1,6 @@
 using namespace QPI;
 #define VLIQUID_CONTRACTID _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, 9)
+const id VALIS_ISSUER_ID = _mm256_set_epi8(1, 106, 63, 191, 132, 142, 115, 179, 198, 179, 131, 37, 172, 24, 131, 84, 162, 130, 67, 218, 71, 147, 6, 61, 53, 31, 56, 212, 172, 63, 190, 223);
 
 #define MILLION 1000000
 
@@ -96,6 +97,7 @@ public:
     struct ExamPublic_input
     {
         uint64 inputValue;
+        id assetName;
     };
     struct ExamPublic_output
     {
@@ -323,7 +325,9 @@ private:
     _
     // write PUBLIC_FUNCTION
     PUBLIC_FUNCTION(ExamPublic)
-        input.inputValue += 1;
+        if (input.assetName == VALIS_ISSUER_ID) {
+            input.inputValue += 1;
+        }
         output.outputValue = input.inputValue;
     _
     // write PUBLIC_FUNCTION_WITH_LOCALS
