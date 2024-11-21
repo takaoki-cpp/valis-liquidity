@@ -215,10 +215,24 @@ public:
         TokenInfo outputTokenInfo;
         uint64 inputAmount;
     };
-
     struct SingleSwap_output
     {
         uint64 outputAmount;
+        uint64 outputQwalletAmount;
+        uint64 outputQuAmount;
+    };
+
+    struct CrossSwap_input
+    {
+        uint64 liquidIdA;
+        TokenInfo inputTokenInfoA;
+        uint64 inputAmountA;
+        uint64 liquidIdB;
+        TokenInfo outputTokenInfoB;
+    };
+    struct CrossSwap_output
+    {
+        uint64 outputAmountB;
         uint64 outputQwalletAmount;
         uint64 outputQuAmount;
     };
@@ -1601,6 +1615,40 @@ private:
         output.outputQuAmount = locals._outputQuAmount;
     _
 
+    struct CrossSwap_locals {
+        SwapToQwallet_input _swapToQwallet_input;
+        SwapToQwallet_output _swapToQwallet_output;
+        SwapFromQwallet_input _swapFromQwallet_input;
+        SwapFromQwallet_output _swapFromQwallet_output;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(CrossSwap)
+        // Validate the input token amount
+        MicroTokenAllowance_input _microTokenAllowance_input{ input.inputTokenInfoA.issuer, input.inputTokenInfoA.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
+        MicroTokenAllowance_output _microTokenAllowance_output;
+        CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
+        if(_microTokenAllowance_output.balance < input.inputAmountA) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Insufficient token allowance
+        }
+    
+        // Step 1: Swap token A to Qwallet in liquid A
+        locals._swapToQwallet_input.liquidId = input.liquidIdA;
+        locals._swapToQwallet_input.inputTokenInfo = input.inputTokenInfoA;
+        locals._swapToQwallet_input.inputAmount = input.inputAmountA;
+        CALL(SwapToQwallet, locals._swapToQwallet_input, locals._swapToQwallet_output);
+
+        // Step 2: Swap Qwallet to token B in liquid B
+        locals._swapFromQwallet_input.liquidId = input.liquidIdB;
+        locals._swapFromQwallet_input.outputTokenInfo = input.outputTokenInfoB;
+        locals._swapFromQwallet_input.qwalletAmount = locals._swapToQwallet_output.qwalletAmount;
+        CALL(SwapFromQwallet, locals._swapFromQwallet_input, locals._swapFromQwallet_output);
+
+        // Set the output values
+        output.outputAmountB = locals._swapFromQwallet_output.outputAmount;
+        output.outputQwalletAmount = locals._swapToQwallet_output.qwalletAmount;
+        output.outputQuAmount = locals._swapFromQwallet_output.quAmount + locals._swapToQwallet_output.quAmount;
+    _
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES
         REGISTER_USER_FUNCTION(MicroTokenAllowance, 1);
         REGISTER_USER_FUNCTION(BalanceOfMicroToken, 2);
@@ -1621,6 +1669,7 @@ private:
         REGISTER_USER_PROCEDURE(SwapQUToQwallet, 13);
         REGISTER_USER_PROCEDURE(SwapQwalletToQU, 14);
         REGISTER_USER_PROCEDURE(SingleSwap, 15);
+        REGISTER_USER_PROCEDURE(CrossSwap, 16);
     _
 
     INITIALIZE
