@@ -327,7 +327,7 @@ private:
 		bool isCreated;
 	};
 
-    _LiquidInfo _newLiquid;
+    _LiquidInfo _tempLiquid;
 
 	array<_LiquidInfo, LIQUIDS_LENGTH> _liquids;
 	uint64 _liquidsCount;
@@ -875,7 +875,7 @@ private:
         locals._newProvider.owner = qpi.invocator();
         locals._newProvider.tokenContributions = input.initialLiquid;
 
-        state._newLiquid.liquidProviders.set(0, locals._newProvider);
+        state._tempLiquid.liquidProviders.set(0, locals._newProvider);
 
 		// Execute transfer each token
 		for(uint8 i = 0; i < input.tokenLength; i ++) {
@@ -888,7 +888,7 @@ private:
 				TransferFromMicroToken_output _transferFromMicroToken_output;
 
 				CALL(TransferFromMicroToken, _transferFromMicroToken_input, _transferFromMicroToken_output);
-                state._newLiquid.tokens.set(i, input.tokens.get(i));
+                state._tempLiquid.tokens.set(i, input.tokens.get(i));
 			}
 			else
 			{
@@ -898,22 +898,22 @@ private:
                 ConvertToMicroToken_input _convertToMicroToken_input{ input.tokens.get(i).tokenInfo.issuer, input.tokens.get(i).tokenInfo.assetName, static_cast<sint64>(input.tokens.get(i).balance) };
                 ConvertToMicroToken_output _convertToMicroToken_output;
                 CALL(ConvertToMicroToken, _convertToMicroToken_input, _convertToMicroToken_output);
-                state._newLiquid.tokens.set(i, Token{ TokenInfo{input.tokens.get(i).tokenInfo.issuer, input.tokens.get(i).tokenInfo.assetName, true}, _convertToMicroToken_output.microTokenAmount, input.tokens.get(i).weight});
+                state._tempLiquid.tokens.set(i, Token{ TokenInfo{input.tokens.get(i).tokenInfo.issuer, input.tokens.get(i).tokenInfo.assetName, true}, _convertToMicroToken_output.microTokenAmount, input.tokens.get(i).weight});
 			}
 		}
 
-        state._newLiquid.tokenLength = input.tokenLength;
-        state._newLiquid.quBalance = input.quShares;
-        state._newLiquid.quWeight = input.quWeight;
-        state._newLiquid.totalWeight = locals._totalWeight;
-        state._newLiquid.totalLiquid = input.initialLiquid;
-        state._newLiquid.feeRate = input.feeRate;
-        state._newLiquid.liquidProvidersCount = 1;
-        state._newLiquid.creator = qpi.invocator();
-        state._newLiquid.isCreated = true;
+        state._tempLiquid.tokenLength = input.tokenLength;
+        state._tempLiquid.quBalance = input.quShares;
+        state._tempLiquid.quWeight = input.quWeight;
+        state._tempLiquid.totalWeight = locals._totalWeight;
+        state._tempLiquid.totalLiquid = input.initialLiquid;
+        state._tempLiquid.feeRate = input.feeRate;
+        state._tempLiquid.liquidProvidersCount = 1;
+        state._tempLiquid.creator = qpi.invocator();
+        state._tempLiquid.isCreated = true;
 
 		// Store the newly created liquid pool and assign an ID
-		state._liquids.set(state._liquidsCount, state._newLiquid);
+		state._liquids.set(state._liquidsCount, state._tempLiquid);
 		state._liquidsCount ++;
 		output.liquidId = state._liquidsCount;
 	_
@@ -936,16 +936,16 @@ private:
 		}
 
 		// Retrieve the targeted liquid based on the provided ID
-		state._newLiquid = state._liquids.get(input.liquidId);
+		state._tempLiquid = state._liquids.get(input.liquidId);
 		
 		// Ensure the liquid has been created
-		if(!state._newLiquid.isCreated) {
+		if(!state._tempLiquid.isCreated) {
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return; // Error: the liquid is not created
 		}
 
 		// Calculate the required QU contribution based on the input token contribution
-		locals._quContribution = state._newLiquid.quBalance * input.tokenContribution / state._newLiquid.totalLiquid;
+		locals._quContribution = state._tempLiquid.quBalance * input.tokenContribution / state._tempLiquid.totalLiquid;
 
 		// Handle the invocation reward with respect to the QU contribution
         if (qpi.invocationReward() < static_cast<sint64>(locals._quContribution)) {
@@ -957,33 +957,33 @@ private:
 			// Transfer excess invocation reward if it exceeds the required QU contribution
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals._quContribution);
 
-			state._newLiquid.quBalance += locals._quContribution;
+			state._tempLiquid.quBalance += locals._quContribution;
 		}
 
 		// Find or create a liquid provider entry for the invocator
         locals._providerFound = false;
-        for (uint64 i = 0; i < state._newLiquid.liquidProvidersCount; i++) {
-            if (state._newLiquid.liquidProviders.get(i).owner == qpi.invocator()) {
-                locals._provider = state._newLiquid.liquidProviders.get(i);
+        for (uint64 i = 0; i < state._tempLiquid.liquidProvidersCount; i++) {
+            if (state._tempLiquid.liquidProviders.get(i).owner == qpi.invocator()) {
+                locals._provider = state._tempLiquid.liquidProviders.get(i);
                 locals._providerFound = true;
             }
         }
 
         if (!locals._providerFound) {
             locals._provider = _LiquidInfo::LiquidProvider{ qpi.invocator(), 0 };
-            state._newLiquid.liquidProviders.set(state._newLiquid.liquidProvidersCount, locals._provider);
-            state._newLiquid.liquidProvidersCount++;
+            state._tempLiquid.liquidProviders.set(state._tempLiquid.liquidProvidersCount, locals._provider);
+            state._tempLiquid.liquidProvidersCount++;
         }
 
 		// Validate each token in the liquidity pool
-		for(uint8 i = 0; i < state._newLiquid.tokenLength; i ++) {
-			uint64 _nthTokenContribution = state._newLiquid.tokens.get(i).balance * input.tokenContribution / state._newLiquid.totalLiquid;
+		for(uint8 i = 0; i < state._tempLiquid.tokenLength; i ++) {
+			uint64 _nthTokenContribution = state._tempLiquid.tokens.get(i).balance * input.tokenContribution / state._tempLiquid.totalLiquid;
 			
 			// Handle token-specific validations and transfers
-			if(state._newLiquid.tokens.get(i).tokenInfo.isMicroToken)
+			if(state._tempLiquid.tokens.get(i).tokenInfo.isMicroToken)
 			{
 				// Validate and transfer MicroTokens
-				MicroTokenAllowance_input _microTokenAllowance_input{ state._newLiquid.tokens.get(i).tokenInfo.issuer, state._newLiquid.tokens.get(i).tokenInfo.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
+				MicroTokenAllowance_input _microTokenAllowance_input{ state._tempLiquid.tokens.get(i).tokenInfo.issuer, state._tempLiquid.tokens.get(i).tokenInfo.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
 				MicroTokenAllowance_output _microTokenAllowance_output;
 				CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
 				if (_microTokenAllowance_output.balance < _nthTokenContribution)
@@ -993,7 +993,7 @@ private:
 				}
 				
 				// Ensure MicroToken balance is sufficient compared to initial balance
-				BalanceOfMicroToken_input _balanceOfMicroToken_input{ state._newLiquid.tokens.get(i).tokenInfo.issuer, state._newLiquid.tokens.get(i).tokenInfo.assetName, qpi.invocator()};
+				BalanceOfMicroToken_input _balanceOfMicroToken_input{ state._tempLiquid.tokens.get(i).tokenInfo.issuer, state._tempLiquid.tokens.get(i).tokenInfo.assetName, qpi.invocator()};
 				BalanceOfMicroToken_output _balanceOfMicroToken_output;
                 CALL(BalanceOfMicroToken, _balanceOfMicroToken_input, _balanceOfMicroToken_output);
 				if(_balanceOfMicroToken_output.balance < _nthTokenContribution){
@@ -1002,32 +1002,32 @@ private:
 				}
 			
 				// Update the token balance in the liquid
-                state._newLiquid.tokens.set(i, Token{state._newLiquid.tokens.get(i).tokenInfo, state._newLiquid.tokens.get(i).balance + _nthTokenContribution, state._newLiquid.tokens.get(i).weight});
+                state._tempLiquid.tokens.set(i, Token{state._tempLiquid.tokens.get(i).tokenInfo, state._tempLiquid.tokens.get(i).balance + _nthTokenContribution, state._tempLiquid.tokens.get(i).weight});
 			}
 			else
 			{
 				// Ensure sufficient token shares for non-MicroTokens
-                if (qpi.numberOfPossessedShares(state._newLiquid.tokens.get(i).tokenInfo.assetName, state._newLiquid.tokens.get(i).tokenInfo.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < static_cast<sint64>(_nthTokenContribution)) {
+                if (qpi.numberOfPossessedShares(state._tempLiquid.tokens.get(i).tokenInfo.assetName, state._tempLiquid.tokens.get(i).tokenInfo.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < static_cast<sint64>(_nthTokenContribution)) {
 					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					return; // Error: insufficient token shares
 				}
 
 				// Update the token balance in the liquid
-                state._newLiquid.tokens.set(i, Token{ state._newLiquid.tokens.get(i).tokenInfo, state._newLiquid.tokens.get(i).balance + _nthTokenContribution * MILLION, state._newLiquid.tokens.get(i).weight });
+                state._tempLiquid.tokens.set(i, Token{ state._tempLiquid.tokens.get(i).tokenInfo, state._tempLiquid.tokens.get(i).balance + _nthTokenContribution * MILLION, state._tempLiquid.tokens.get(i).weight });
 			}
             // locals._liquid.tokens.set(i, locals._nthToken);
 		}
 
 		// Execute transfer each token
-		for(uint8 i = 0; i < state._newLiquid.tokenLength; i ++) {
+		for(uint8 i = 0; i < state._tempLiquid.tokenLength; i ++) {
 			// const _LiquidInfo::TokenInfo& _nthToken = locals._liquid.tokens.get(i);
-			uint64 _nthTokenContribution = state._newLiquid.tokens.get(i).balance * input.tokenContribution / state._newLiquid.totalLiquid;
+			uint64 _nthTokenContribution = state._tempLiquid.tokens.get(i).balance * input.tokenContribution / state._tempLiquid.totalLiquid;
 			
 			// Handle token-specific validations and transfers
-			if(state._newLiquid.tokens.get(i).tokenInfo.isMicroToken)
+			if(state._tempLiquid.tokens.get(i).tokenInfo.isMicroToken)
 			{
 				// Execute the MicroToken transfer
-				TransferFromMicroToken_input _transferFromMicroToken_input{ state._newLiquid.tokens.get(i).tokenInfo.issuer, state._newLiquid.tokens.get(i).tokenInfo.assetName, qpi.invocator(), VLIQUID_CONTRACTID, _nthTokenContribution};
+				TransferFromMicroToken_input _transferFromMicroToken_input{ state._tempLiquid.tokens.get(i).tokenInfo.issuer, state._tempLiquid.tokens.get(i).tokenInfo.assetName, qpi.invocator(), VLIQUID_CONTRACTID, _nthTokenContribution};
 				TransferFromMicroToken_output _transferFromMicroToken_output;
 
 				CALL(TransferFromMicroToken, _transferFromMicroToken_input, _transferFromMicroToken_output);
@@ -1035,14 +1035,14 @@ private:
 			else
 			{
 				// Transfer ownership and possession of shares to this contract
-				qpi.transferShareOwnershipAndPossession(state._newLiquid.tokens.get(i).tokenInfo.assetName, state._newLiquid.tokens.get(i).tokenInfo.issuer, qpi.invocator(), qpi.invocator(), _nthTokenContribution / MILLION, VLIQUID_CONTRACTID);
+				qpi.transferShareOwnershipAndPossession(state._tempLiquid.tokens.get(i).tokenInfo.assetName, state._tempLiquid.tokens.get(i).tokenInfo.issuer, qpi.invocator(), qpi.invocator(), _nthTokenContribution / MILLION, VLIQUID_CONTRACTID);
 			}
 		}
 
 		// Update the liquid provider's contributions and the total liquidity of the liquid
 		locals._provider.tokenContributions += input.tokenContribution;
-		state._newLiquid.totalLiquid += input.tokenContribution;
-		state._liquids.set(input.liquidId, state._newLiquid);
+		state._tempLiquid.totalLiquid += input.tokenContribution;
+		state._liquids.set(input.liquidId, state._tempLiquid);
 		output.addedContribution = input.tokenContribution;
     _
     
@@ -1054,13 +1054,13 @@ private:
 	};
     PUBLIC_PROCEDURE_WITH_LOCALS(RemoveLiquid)
 		// Retrieve the targeted liquid based on the provided ID
-		state._newLiquid = state._liquids.get(input.liquidId);
+		state._tempLiquid = state._liquids.get(input.liquidId);
 		
 		// Find the provider associated with the invocator
 		// locals._provider = _findProvder(locals._liquid, qpi.invocator());
         locals._providerFound = false;
-        for (uint64 i = 0; i < state._newLiquid.liquidProvidersCount; i++) {
-            locals._provider = state._newLiquid.liquidProviders.get(i);
+        for (uint64 i = 0; i < state._tempLiquid.liquidProvidersCount; i++) {
+            locals._provider = state._tempLiquid.liquidProviders.get(i);
             if (locals._provider.owner == qpi.invocator()) {
                 locals._providerFound = true;
             }
@@ -1083,50 +1083,50 @@ private:
 
 		// Calculate and transfer the corresponding QU tokens to the invocator
 		// QU transfer
-		uint64 _removedQuBalance = state._newLiquid.quBalance * input.tokenContribution / state._newLiquid.totalLiquid;
+		uint64 _removedQuBalance = state._tempLiquid.quBalance * input.tokenContribution / state._tempLiquid.totalLiquid;
 		qpi.transfer(qpi.invocator(), _removedQuBalance);
-        state._newLiquid.quBalance -= _removedQuBalance;
+        state._tempLiquid.quBalance -= _removedQuBalance;
 
 		// Process each token in the liquid pool
 		// Token transfer
-		for(uint8 i = 0; i < state._newLiquid.tokenLength; i ++) {
+		for(uint8 i = 0; i < state._tempLiquid.tokenLength; i ++) {
 			// Calculate the micro token amount of tokens to remove
-			locals._removedBalance = state._newLiquid.tokens.get(i).balance * input.tokenContribution / state._newLiquid.totalLiquid;
+			locals._removedBalance = state._tempLiquid.tokens.get(i).balance * input.tokenContribution / state._tempLiquid.totalLiquid;
 
-			TransferMicroToken_input _transferMicroToken_input{ state._newLiquid.tokens.get(i).tokenInfo.issuer, state._newLiquid.tokens.get(i).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._removedBalance};
+			TransferMicroToken_input _transferMicroToken_input{ state._tempLiquid.tokens.get(i).tokenInfo.issuer, state._tempLiquid.tokens.get(i).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._removedBalance};
 			TransferMicroToken_output _transferMicroToken_output;
 			CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
 
 			// Update the micro token balance in the liquid pool
 
-            state._newLiquid.tokens.set(i, Token{ state._newLiquid.tokens.get(i).tokenInfo, state._newLiquid.tokens.get(i).balance - locals._removedBalance, state._newLiquid.tokens.get(i).weight });
+            state._tempLiquid.tokens.set(i, Token{ state._tempLiquid.tokens.get(i).tokenInfo, state._tempLiquid.tokens.get(i).balance - locals._removedBalance, state._tempLiquid.tokens.get(i).weight });
 		}
 
 		// Update the provider's contribution and the total liquid in the pool
 		locals._provider.tokenContributions -= input.tokenContribution;
-		state._newLiquid.totalLiquid -= input.tokenContribution;
+		state._tempLiquid.totalLiquid -= input.tokenContribution;
 
 		// If the provider has withdrawn all contributions, remove them from the poroviders list
 		if (locals._provider.tokenContributions == 0) {
 			// _removeProvider(locals._liquid, qpi.invocator());
-            for (uint64 i = 0; i < state._newLiquid.liquidProvidersCount; i++) {
-                locals._provider = state._newLiquid.liquidProviders.get(i);
+            for (uint64 i = 0; i < state._tempLiquid.liquidProvidersCount; i++) {
+                locals._provider = state._tempLiquid.liquidProviders.get(i);
 
                 if (locals._provider.owner == qpi.invocator()) {
-                    if (i == state._newLiquid.liquidProvidersCount - 1) {
-                        state._newLiquid.liquidProvidersCount--;
+                    if (i == state._tempLiquid.liquidProvidersCount - 1) {
+                        state._tempLiquid.liquidProvidersCount--;
                     }
                     else {
-                        locals._lastProvider = state._newLiquid.liquidProviders.get(state._newLiquid.liquidProvidersCount - 1);
-                        state._newLiquid.liquidProviders.set(i, locals._lastProvider);
-                        state._newLiquid.liquidProvidersCount--;
+                        locals._lastProvider = state._tempLiquid.liquidProviders.get(state._tempLiquid.liquidProvidersCount - 1);
+                        state._tempLiquid.liquidProviders.set(i, locals._lastProvider);
+                        state._tempLiquid.liquidProvidersCount--;
                     }
                 }
             }
 		}
 
 		// Save the updated liquid state
-		state._liquids.set(input.liquidId, state._newLiquid);
+		state._liquids.set(input.liquidId, state._tempLiquid);
 
 		output.removedContribution = input.tokenContribution;
     _
@@ -1149,18 +1149,18 @@ private:
         }
 
         // Retrieve the liquid pool based on the provided ID
-        state._newLiquid = state._liquids.get(input.liquidId);
+        state._tempLiquid = state._liquids.get(input.liquidId);
 
         locals._reserveToken = 0;
-        locals._reserveQU = state._newLiquid.quBalance;
+        locals._reserveQU = state._tempLiquid.quBalance;
         locals._weightToken = 0;
-        locals._weightQU = state._newLiquid.quWeight;
+        locals._weightQU = state._tempLiquid.quWeight;
 
-        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
-            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && 
-            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.inputTokenInfo.assetName)) {
-                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
-                locals._weightToken = state._newLiquid.tokens.get(i).weight;
+        for (uint8 i = 0; i < state._tempLiquid.tokenLength; i++) {
+            if((state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && 
+            (state._tempLiquid.tokens.get(i).tokenInfo.assetName == input.inputTokenInfo.assetName)) {
+                locals._reserveToken = state._tempLiquid.tokens.get(i).balance;
+                locals._weightToken = state._tempLiquid.tokens.get(i).weight;
                 break;
             }
         }
@@ -1179,11 +1179,11 @@ private:
         qpi.transfer(qpi.invocator(), locals._outputQUAmount);
 
         // Update the token and QU reserves
-        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance + input.inputAmount, state._newLiquid.tokens.get(input.liquidId).weight });
-        state._newLiquid.quBalance -= locals._outputQUAmount;
+        state._tempLiquid.tokens.set(input.liquidId, Token{ state._tempLiquid.tokens.get(input.liquidId).tokenInfo, state._tempLiquid.tokens.get(input.liquidId).balance + input.inputAmount, state._tempLiquid.tokens.get(input.liquidId).weight });
+        state._tempLiquid.quBalance -= locals._outputQUAmount;
 
         // Save the updated liquid state
-        state._liquids.set(input.liquidId, state._newLiquid);
+        state._liquids.set(input.liquidId, state._tempLiquid);
 
         output.quAmount = locals._outputQUAmount;
     _
@@ -1197,7 +1197,7 @@ private:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(SwapFromQU)
         // Validate the input QU amount
-        if (input.quAmount <= qpi.invocationReward() || input.quAmount > state._newLiquid.quBalance) {
+        if (input.quAmount <= qpi.invocationReward() || input.quAmount > state._tempLiquid.quBalance) {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return; // Error: Invalid QU amount
         }
@@ -1208,18 +1208,18 @@ private:
         }
 
         // Retrieve the liquid pool based on the provided ID
-        state._newLiquid = state._liquids.get(input.liquidId);
+        state._tempLiquid = state._liquids.get(input.liquidId);
 
         locals._reserveToken = 0;
-        locals._reserveQU = state._newLiquid.quBalance;
+        locals._reserveQU = state._tempLiquid.quBalance;
         locals._weightToken = 0;
-        locals._weightQU = state._newLiquid.quWeight;
+        locals._weightQU = state._tempLiquid.quWeight;
 
-        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
-            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && 
-            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.outputTokenInfo.assetName)) {
-                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
-                locals._weightToken = state._newLiquid.tokens.get(i).weight;
+        for (uint8 i = 0; i < state._tempLiquid.tokenLength; i++) {
+            if((state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && 
+            (state._tempLiquid.tokens.get(i).tokenInfo.assetName == input.outputTokenInfo.assetName)) {
+                locals._reserveToken = state._tempLiquid.tokens.get(i).balance;
+                locals._weightToken = state._tempLiquid.tokens.get(i).weight;
                 break;
             }
         }
@@ -1240,11 +1240,11 @@ private:
         CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
 
         // Update the token and QU reserves
-        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance - locals._outputTokenAmount, state._newLiquid.tokens.get(input.liquidId).weight });
-        state._newLiquid.quBalance += input.quAmount;
+        state._tempLiquid.tokens.set(input.liquidId, Token{ state._tempLiquid.tokens.get(input.liquidId).tokenInfo, state._tempLiquid.tokens.get(input.liquidId).balance - locals._outputTokenAmount, state._tempLiquid.tokens.get(input.liquidId).weight });
+        state._tempLiquid.quBalance += input.quAmount;
 
         // Save the updated liquid state
-        state._liquids.set(input.liquidId, state._newLiquid);
+        state._liquids.set(input.liquidId, state._tempLiquid);
 
         output.outputAmount = locals._outputTokenAmount;
     _
@@ -1270,18 +1270,18 @@ private:
         }
 
         // Retrieve the liquid pool based on the provided ID
-        state._newLiquid = state._liquids.get(input.liquidId);
+        state._tempLiquid = state._liquids.get(input.liquidId);
 
         locals._reserveToken = 0;
-        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
+        locals._reserveQwallet = state._tempLiquid.tokens.get(0).balance;
         locals._weightToken = 0;
-        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
+        locals._weightQwallet = state._tempLiquid.tokens.get(0).weight;
 
-        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
-            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && 
-            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.inputTokenInfo.assetName)) {
-                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
-                locals._weightToken = state._newLiquid.tokens.get(i).weight;
+        for (uint8 i = 0; i < state._tempLiquid.tokenLength; i++) {
+            if((state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && 
+            (state._tempLiquid.tokens.get(i).tokenInfo.assetName == input.inputTokenInfo.assetName)) {
+                locals._reserveToken = state._tempLiquid.tokens.get(i).balance;
+                locals._weightToken = state._tempLiquid.tokens.get(i).weight;
                 break;
             }
         }
@@ -1298,11 +1298,11 @@ private:
         locals._remainder = (input.inputAmount * locals._price) % MILLION;
 
         // Calculate the output QU amount from the remainder
-        locals._quPrice = (state._newLiquid.quBalance * state._newLiquid.quWeight * MILLION) / (state._newLiquid.tokens.get(0).balance * state._newLiquid.tokens.get(0).weight);
+        locals._quPrice = (state._tempLiquid.quBalance * state._tempLiquid.quWeight * MILLION) / (state._tempLiquid.tokens.get(0).balance * state._tempLiquid.tokens.get(0).weight);
         locals._outputQuAmount = (locals._remainder * locals._quPrice) / MILLION / MILLION;
 
         // Transfer the output Qwallet amount to the invocator
-        TransferMicroToken_input _transferMicroToken_input{ state._newLiquid.tokens.get(0).tokenInfo.issuer, state._newLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
+        TransferMicroToken_input _transferMicroToken_input{ state._tempLiquid.tokens.get(0).tokenInfo.issuer, state._tempLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
         TransferMicroToken_output _transferMicroToken_output;
         CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
 
@@ -1310,12 +1310,12 @@ private:
         qpi.transfer(qpi.invocator(), locals._outputQuAmount);
 
         // Update the token and Qwallet reserves
-        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance + input.inputAmount, state._newLiquid.tokens.get(input.liquidId).weight });
-        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance - locals._outputQwalletAmount, state._newLiquid.tokens.get(0).weight });
-        state._newLiquid.quBalance -= locals._outputQuAmount;
+        state._tempLiquid.tokens.set(input.liquidId, Token{ state._tempLiquid.tokens.get(input.liquidId).tokenInfo, state._tempLiquid.tokens.get(input.liquidId).balance + input.inputAmount, state._tempLiquid.tokens.get(input.liquidId).weight });
+        state._tempLiquid.tokens.set(0, Token{ state._tempLiquid.tokens.get(0).tokenInfo, state._tempLiquid.tokens.get(0).balance - locals._outputQwalletAmount, state._tempLiquid.tokens.get(0).weight });
+        state._tempLiquid.quBalance -= locals._outputQuAmount;
 
         // Save the updated liquid state
-        state._liquids.set(input.liquidId, state._newLiquid);
+        state._liquids.set(input.liquidId, state._tempLiquid);
 
         output.qwalletAmount = locals._outputQwalletAmount;
         output.quAmount = locals._outputQuAmount;
@@ -1334,15 +1334,15 @@ private:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(SwapFromQwallet)
         // Validate the input Qwallet amount
-        if (input.qwalletAmount <= 0 || input.qwalletAmount > state._newLiquid.tokens.get(0).balance) {
+        if (input.qwalletAmount <= 0 || input.qwalletAmount > state._tempLiquid.tokens.get(0).balance) {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return; // Error: Invalid Qwallet amount
         }
 
         // Retrieve the liquid pool based on the provided ID
-        state._newLiquid = state._liquids.get(input.liquidId);
+        state._tempLiquid = state._liquids.get(input.liquidId);
 
-        MicroTokenAllowance_input _microTokenAllowance_input{ state._newLiquid.tokens.get(0).tokenInfo.issuer, state._newLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
+        MicroTokenAllowance_input _microTokenAllowance_input{ state._tempLiquid.tokens.get(0).tokenInfo.issuer, state._tempLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
         MicroTokenAllowance_output _microTokenAllowance_output;
         CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
         if(_microTokenAllowance_output.balance < input.qwalletAmount) {
@@ -1351,16 +1351,16 @@ private:
         }
 
         locals._reserveToken = 0;
-        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
+        locals._reserveQwallet = state._tempLiquid.tokens.get(0).balance;
         locals._weightToken = 0;
-        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
+        locals._weightQwallet = state._tempLiquid.tokens.get(0).weight;
 
-        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
-            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && 
-            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.outputTokenInfo.assetName)) {
-                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
-                locals._weightToken = state._newLiquid.tokens.get(i).weight;
-                locals._token = state._newLiquid.tokens.get(i);
+        for (uint8 i = 0; i < state._tempLiquid.tokenLength; i++) {
+            if((state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && 
+            (state._tempLiquid.tokens.get(i).tokenInfo.assetName == input.outputTokenInfo.assetName)) {
+                locals._reserveToken = state._tempLiquid.tokens.get(i).balance;
+                locals._weightToken = state._tempLiquid.tokens.get(i).weight;
+                locals._token = state._tempLiquid.tokens.get(i);
                 break;
             }
         }
@@ -1377,7 +1377,7 @@ private:
         locals._remainder = (input.qwalletAmount * locals._price) % MILLION;
 
         // Calculate the output QU amount from the remainder
-        locals._quPrice = (state._newLiquid.quBalance * state._newLiquid.quWeight * MILLION) / (locals._token.balance * locals._token.weight);
+        locals._quPrice = (state._tempLiquid.quBalance * state._tempLiquid.quWeight * MILLION) / (locals._token.balance * locals._token.weight);
         locals._outputQuAmount = (locals._remainder * locals._quPrice) / MILLION / MILLION;
 
         // Transfer the output token amount to the invocator
@@ -1389,12 +1389,12 @@ private:
         qpi.transfer(qpi.invocator(), locals._outputQuAmount);
 
         // Update the token and Qwallet reserves
-        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance - locals._outputTokenAmount, state._newLiquid.tokens.get(input.liquidId).weight });
-        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance + input.qwalletAmount, state._newLiquid.tokens.get(0).weight });
-        state._newLiquid.quBalance -= locals._outputQuAmount;
+        state._tempLiquid.tokens.set(input.liquidId, Token{ state._tempLiquid.tokens.get(input.liquidId).tokenInfo, state._tempLiquid.tokens.get(input.liquidId).balance - locals._outputTokenAmount, state._tempLiquid.tokens.get(input.liquidId).weight });
+        state._tempLiquid.tokens.set(0, Token{ state._tempLiquid.tokens.get(0).tokenInfo, state._tempLiquid.tokens.get(0).balance + input.qwalletAmount, state._tempLiquid.tokens.get(0).weight });
+        state._tempLiquid.quBalance -= locals._outputQuAmount;
 
         // Save the updated liquid state
-        state._liquids.set(input.liquidId, state._newLiquid);
+        state._liquids.set(input.liquidId, state._tempLiquid);
 
         output.outputAmount = locals._outputTokenAmount;
         output.quAmount = locals._outputQuAmount;
@@ -1409,7 +1409,7 @@ private:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(SwapQUToQwallet)
         // Validate the input QU amount
-        if (input.quAmount <= 0 || input.quAmount > state._newLiquid.quBalance) {
+        if (input.quAmount <= 0 || input.quAmount > state._tempLiquid.quBalance) {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return; // Error: Invalid QU amount
         }
@@ -1420,12 +1420,12 @@ private:
         }
 
         // Retrieve the liquid pool based on the provided ID
-        state._newLiquid = state._liquids.get(input.liquidId);
+        state._tempLiquid = state._liquids.get(input.liquidId);
 
-        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
-        locals._reserveQU = state._newLiquid.quBalance;
-        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
-        locals._weightQU = state._newLiquid.quWeight;
+        locals._reserveQwallet = state._tempLiquid.tokens.get(0).balance;
+        locals._reserveQU = state._tempLiquid.quBalance;
+        locals._weightQwallet = state._tempLiquid.tokens.get(0).weight;
+        locals._weightQU = state._tempLiquid.quWeight;
 
         // Calculate the price of QU in terms of Qwallet
         locals._price = (locals._reserveQU * locals._weightQU * MILLION) / (locals._reserveQwallet * locals._weightQwallet);
@@ -1433,16 +1433,16 @@ private:
         locals._outputQwalletAmount = input.quAmount * locals._price / MILLION;
 
         // Transfer the output Qwallet amount to the invocator
-        TransferMicroToken_input _transferMicroToken_input{ state._newLiquid.tokens.get(0).tokenInfo.issuer, state._newLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
+        TransferMicroToken_input _transferMicroToken_input{ state._tempLiquid.tokens.get(0).tokenInfo.issuer, state._tempLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
         TransferMicroToken_output _transferMicroToken_output;
         CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
 
         // Update the Qwallet and QU reserves
-        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance - locals._outputQwalletAmount, state._newLiquid.tokens.get(0).weight });
-        state._newLiquid.quBalance += input.quAmount;
+        state._tempLiquid.tokens.set(0, Token{ state._tempLiquid.tokens.get(0).tokenInfo, state._tempLiquid.tokens.get(0).balance - locals._outputQwalletAmount, state._tempLiquid.tokens.get(0).weight });
+        state._tempLiquid.quBalance += input.quAmount;
 
         // Save the updated liquid state
-        state._liquids.set(input.liquidId, state._newLiquid);
+        state._liquids.set(input.liquidId, state._tempLiquid);
 
         output.qwalletAmount = locals._outputQwalletAmount;
     _
@@ -1456,18 +1456,18 @@ private:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(SwapQwalletToQU)
         // Validate the input Qwallet amount
-        if (input.qwalletAmount <= 0 || input.qwalletAmount > state._newLiquid.tokens.get(0).balance) {
+        if (input.qwalletAmount <= 0 || input.qwalletAmount > state._tempLiquid.tokens.get(0).balance) {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return; // Error: Invalid Qwallet amount
         }
 
         // Retrieve the liquid pool based on the provided ID
-        state._newLiquid = state._liquids.get(input.liquidId);
+        state._tempLiquid = state._liquids.get(input.liquidId);
 
-        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
-        locals._reserveQU = state._newLiquid.quBalance;
-        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
-        locals._weightQU = state._newLiquid.quWeight;
+        locals._reserveQwallet = state._tempLiquid.tokens.get(0).balance;
+        locals._reserveQU = state._tempLiquid.quBalance;
+        locals._weightQwallet = state._tempLiquid.tokens.get(0).weight;
+        locals._weightQU = state._tempLiquid.quWeight;
 
         // Calculate the price of Qwallet in terms of QU
         locals._price = (locals._reserveQwallet * locals._weightQwallet * MILLION) / (locals._reserveQU * locals._weightQU);
@@ -1478,11 +1478,11 @@ private:
         qpi.transfer(qpi.invocator(), locals._outputQuAmount);
 
         // Update the Qwallet and QU reserves
-        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance - input.qwalletAmount, state._newLiquid.tokens.get(0).weight });
-        state._newLiquid.quBalance += locals._outputQuAmount;
+        state._tempLiquid.tokens.set(0, Token{ state._tempLiquid.tokens.get(0).tokenInfo, state._tempLiquid.tokens.get(0).balance - input.qwalletAmount, state._tempLiquid.tokens.get(0).weight });
+        state._tempLiquid.quBalance += locals._outputQuAmount;
 
         // Save the updated liquid state
-        state._liquids.set(input.liquidId, state._newLiquid);
+        state._liquids.set(input.liquidId, state._tempLiquid);
 
         output.quAmount = locals._outputQuAmount;
     _
@@ -1511,23 +1511,23 @@ private:
         }
 
         // Retrieve the liquid pool based on the provided ID
-        state._newLiquid = state._liquids.get(input.liquidId);
+        state._tempLiquid = state._liquids.get(input.liquidId);
 
         locals._reserveA = 0;
         locals._reserveB = 0;
         locals._weightA = 0;
         locals._weightB = 0;
 
-        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
-            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && (state._newLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer))
+        for (uint8 i = 0; i < state._tempLiquid.tokenLength; i++) {
+            if((state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && (state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer))
             {
-                locals._reserveA = state._newLiquid.tokens.get(i).balance;
-                locals._weightA = state._newLiquid.tokens.get(i).weight;
+                locals._reserveA = state._tempLiquid.tokens.get(i).balance;
+                locals._weightA = state._tempLiquid.tokens.get(i).weight;
             }
-            else if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && (state._newLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer))
+            else if((state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && (state._tempLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer))
             {
-                locals._reserveB = state._newLiquid.tokens.get(i).balance;
-                locals._weightB = state._newLiquid.tokens.get(i).weight;
+                locals._reserveB = state._tempLiquid.tokens.get(i).balance;
+                locals._weightB = state._tempLiquid.tokens.get(i).weight;
             }
         }
 
@@ -1542,19 +1542,19 @@ private:
         locals._outputAmount = input.inputAmount * locals._price / MILLION;
         locals._outputQwalletPromisedAmount = input.inputAmount * locals._price % MILLION;
 
-        locals._qwalletPrice = (state._newLiquid.tokens.get(0).balance * state._newLiquid.tokens.get(0).weight * MILLION) / (locals._reserveB * locals._weightA);
+        locals._qwalletPrice = (state._tempLiquid.tokens.get(0).balance * state._tempLiquid.tokens.get(0).weight * MILLION) / (locals._reserveB * locals._weightA);
         locals._outputQwalletAmount = locals._outputQwalletPromisedAmount * locals._qwalletPrice / MILLION / MILLION;
 
         locals._outputQuPromisedAmount = locals._outputQwalletPromisedAmount * locals._qwalletPrice % MILLION;
-        locals._quPrice = (state._newLiquid.quBalance * state._newLiquid.quWeight * MILLION) / (state._newLiquid.tokens.get(0).balance * state._newLiquid.tokens.get(0).weight);
+        locals._quPrice = (state._tempLiquid.quBalance * state._tempLiquid.quWeight * MILLION) / (state._tempLiquid.tokens.get(0).balance * state._tempLiquid.tokens.get(0).weight);
         locals._outputQuAmount = locals._outputQuPromisedAmount * locals._quPrice / MILLION / MILLION;
 
         // Transfer the output amount of tokenOut to the invocator
-        TransferMicroToken_input _transferMicroToken_input{ state._newLiquid.tokens.get(input.liquidId).tokenInfo.issuer, state._newLiquid.tokens.get(input.liquidId).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputAmount};
+        TransferMicroToken_input _transferMicroToken_input{ state._tempLiquid.tokens.get(input.liquidId).tokenInfo.issuer, state._tempLiquid.tokens.get(input.liquidId).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputAmount};
         TransferMicroToken_output _transferMicroToken_output;
         CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
 
-        TransferMicroToken_input _transferQwalletMicroToken_input{ state._newLiquid.tokens.get(0).tokenInfo.issuer, state._newLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
+        TransferMicroToken_input _transferQwalletMicroToken_input{ state._tempLiquid.tokens.get(0).tokenInfo.issuer, state._tempLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
         TransferMicroToken_output _transferQwalletMicroToken_output;
         CALL(TransferMicroToken, _transferQwalletMicroToken_input, _transferQwalletMicroToken_output);
 
