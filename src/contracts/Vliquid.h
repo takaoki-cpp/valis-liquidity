@@ -142,6 +142,72 @@ public:
 		uint64  removedContribution;
     };
 
+    struct SwapToQU_input
+    {
+        uint64 liquidId;
+        TokenInfo inputTokenInfo;
+        uint64 inputAmount;
+    };
+    struct SwapToQU_output
+    {
+        uint64 quAmount;
+    };
+
+    struct SwapFromQU_input
+    {
+        uint64 liquidId;
+        TokenInfo outputTokenInfo;
+        uint64 quAmount;
+    };
+    struct SwapFromQU_output
+    {
+        uint64 outputAmount;
+    };
+
+    struct SwapToQwallet_input
+    {
+        uint64 liquidId;
+        TokenInfo inputTokenInfo;
+        uint64 inputAmount;
+    };
+    struct SwapToQwallet_output
+    {
+        uint64 qwalletAmount;
+        uint64 quAmount;
+    };
+
+    struct SwapFromQwallet_input
+    {
+        uint64 liquidId;
+        TokenInfo outputTokenInfo;
+        uint64 qwalletAmount;
+    };
+    struct SwapFromQwallet_output
+    {
+        uint64 outputAmount;
+        uint64 quAmount;
+    };
+
+    struct SwapQUToQwallet_input
+    {
+        uint64 liquidId;
+        uint64 quAmount;
+    };
+    struct SwapQUToQwallet_output
+    {
+        uint64 qwalletAmount;
+    };
+
+    struct SwapQwalletToQU_input
+    {
+        uint64 liquidId;
+        uint64 qwalletAmount;
+    };
+    struct SwapQwalletToQU_output
+    {
+        uint64 quAmount;
+    };
+
     struct SingleSwap_input
     {
         uint64 liquidId;
@@ -1064,6 +1130,362 @@ private:
 
 		output.removedContribution = input.tokenContribution;
     _
+    struct SwapToQU_locals {
+        uint64 _reserveToken;
+        uint64 _reserveQU;
+        uint64 _weightToken;
+        uint64 _weightQU;
+        uint64 _price;
+        uint64 _outputQUAmount;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(SwapToQU)
+        // Validate the input token amount
+        MicroTokenAllowance_input _microTokenAllowance_input{ input.inputTokenInfo.issuer, input.inputTokenInfo.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
+        MicroTokenAllowance_output _microTokenAllowance_output;
+        CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
+        if(_microTokenAllowance_output.balance < input.inputAmount) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Insufficient token allowance
+        }
+
+        // Retrieve the liquid pool based on the provided ID
+        state._newLiquid = state._liquids.get(input.liquidId);
+
+        locals._reserveToken = 0;
+        locals._reserveQU = state._newLiquid.quBalance;
+        locals._weightToken = 0;
+        locals._weightQU = state._newLiquid.quWeight;
+
+        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
+            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && 
+            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.inputTokenInfo.assetName)) {
+                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
+                locals._weightToken = state._newLiquid.tokens.get(i).weight;
+                break;
+            }
+        }
+
+        if(locals._reserveToken == 0 || locals._weightToken == 0) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid token
+        }
+
+        // Calculate the price of the token in terms of QU
+        locals._price = (locals._reserveToken * locals._weightToken * MILLION) / (locals._reserveQU * locals._weightQU);
+        // Calculate the output QU amount
+        locals._outputQUAmount = input.inputAmount * locals._price / MILLION;
+
+        // Transfer the output QU amount to the invocator
+        qpi.transfer(qpi.invocator(), locals._outputQUAmount);
+
+        // Update the token and QU reserves
+        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance + input.inputAmount, state._newLiquid.tokens.get(input.liquidId).weight });
+        state._newLiquid.quBalance -= locals._outputQUAmount;
+
+        // Save the updated liquid state
+        state._liquids.set(input.liquidId, state._newLiquid);
+
+        output.quAmount = locals._outputQUAmount;
+    _
+    struct SwapFromQU_locals {
+        uint64 _reserveToken;
+        uint64 _reserveQU;
+        uint8 _weightToken;
+        uint8 _weightQU;
+        uint64 _price;
+        uint64 _outputTokenAmount;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(SwapFromQU)
+        // Validate the input QU amount
+        if (input.quAmount <= qpi.invocationReward() || input.quAmount > state._newLiquid.quBalance) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid QU amount
+        }
+
+        // Return the excess QU amount to the invocator
+        if(input.quAmount > qpi.invocationReward()) {
+            qpi.transfer(qpi.invocator(), input.quAmount - qpi.invocationReward());
+        }
+
+        // Retrieve the liquid pool based on the provided ID
+        state._newLiquid = state._liquids.get(input.liquidId);
+
+        locals._reserveToken = 0;
+        locals._reserveQU = state._newLiquid.quBalance;
+        locals._weightToken = 0;
+        locals._weightQU = state._newLiquid.quWeight;
+
+        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
+            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && 
+            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.outputTokenInfo.assetName)) {
+                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
+                locals._weightToken = state._newLiquid.tokens.get(i).weight;
+                break;
+            }
+        }
+
+        if(locals._reserveToken == 0 || locals._weightToken == 0) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid token
+        }
+
+        // Calculate the price of QU in terms of the token
+        locals._price = (locals._reserveQU * locals._weightQU * MILLION) / (locals._reserveToken * locals._weightToken);
+        // Calculate the output token amount
+        locals._outputTokenAmount = input.quAmount * locals._price / MILLION;
+
+        // Transfer the output token amount to the invocator
+        TransferMicroToken_input _transferMicroToken_input{ input.outputTokenInfo.issuer, input.outputTokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputTokenAmount};
+        TransferMicroToken_output _transferMicroToken_output;
+        CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
+
+        // Update the token and QU reserves
+        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance - locals._outputTokenAmount, state._newLiquid.tokens.get(input.liquidId).weight });
+        state._newLiquid.quBalance += input.quAmount;
+
+        // Save the updated liquid state
+        state._liquids.set(input.liquidId, state._newLiquid);
+
+        output.outputAmount = locals._outputTokenAmount;
+    _
+    struct SwapToQwallet_locals {
+        uint64 _reserveToken;
+        uint64 _reserveQwallet;
+        uint8 _weightToken;
+        uint8 _weightQwallet;
+        uint64 _price;
+        uint64 _outputQwalletAmount;
+        uint64 _outputQuAmount;
+        uint64 _remainder;
+        uint64 _quPrice;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(SwapToQwallet)
+        // Validate the input token amount
+        MicroTokenAllowance_input _microTokenAllowance_input{ input.inputTokenInfo.issuer, input.inputTokenInfo.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
+        MicroTokenAllowance_output _microTokenAllowance_output;
+        CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
+        if(_microTokenAllowance_output.balance < input.inputAmount) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Insufficient token allowance
+        }
+
+        // Retrieve the liquid pool based on the provided ID
+        state._newLiquid = state._liquids.get(input.liquidId);
+
+        locals._reserveToken = 0;
+        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
+        locals._weightToken = 0;
+        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
+
+        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
+            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.inputTokenInfo.issuer) && 
+            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.inputTokenInfo.assetName)) {
+                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
+                locals._weightToken = state._newLiquid.tokens.get(i).weight;
+                break;
+            }
+        }
+
+        if(locals._reserveToken == 0 || locals._weightToken == 0) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid token
+        }
+
+        // Calculate the price of the token in terms of Qwallet
+        locals._price = (locals._reserveToken * locals._weightToken * MILLION) / (locals._reserveQwallet * locals._weightQwallet);
+        // Calculate the output Qwallet amount and remainder
+        locals._outputQwalletAmount = (input.inputAmount * locals._price) / MILLION;
+        locals._remainder = (input.inputAmount * locals._price) % MILLION;
+
+        // Calculate the output QU amount from the remainder
+        locals._quPrice = (state._newLiquid.quBalance * state._newLiquid.quWeight * MILLION) / (state._newLiquid.tokens.get(0).balance * state._newLiquid.tokens.get(0).weight);
+        locals._outputQuAmount = (locals._remainder * locals._quPrice) / MILLION / MILLION;
+
+        // Transfer the output Qwallet amount to the invocator
+        TransferMicroToken_input _transferMicroToken_input{ state._newLiquid.tokens.get(0).tokenInfo.issuer, state._newLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
+        TransferMicroToken_output _transferMicroToken_output;
+        CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
+
+        // Transfer the output QU amount to the invocator
+        qpi.transfer(qpi.invocator(), locals._outputQuAmount);
+
+        // Update the token and Qwallet reserves
+        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance + input.inputAmount, state._newLiquid.tokens.get(input.liquidId).weight });
+        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance - locals._outputQwalletAmount, state._newLiquid.tokens.get(0).weight });
+        state._newLiquid.quBalance -= locals._outputQuAmount;
+
+        // Save the updated liquid state
+        state._liquids.set(input.liquidId, state._newLiquid);
+
+        output.qwalletAmount = locals._outputQwalletAmount;
+        output.quAmount = locals._outputQuAmount;
+    _
+    struct SwapFromQwallet_locals {
+        uint64 _reserveToken;
+        uint64 _reserveQwallet;
+        uint8 _weightToken;
+        uint8 _weightQwallet;
+        uint64 _price;
+        uint64 _outputTokenAmount;
+        uint64 _remainder;
+        uint64 _outputQuAmount;
+        uint64 _quPrice;
+        Token _token;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(SwapFromQwallet)
+        // Validate the input Qwallet amount
+        if (input.qwalletAmount <= 0 || input.qwalletAmount > state._newLiquid.tokens.get(0).balance) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid Qwallet amount
+        }
+
+        // Retrieve the liquid pool based on the provided ID
+        state._newLiquid = state._liquids.get(input.liquidId);
+
+        MicroTokenAllowance_input _microTokenAllowance_input{ state._newLiquid.tokens.get(0).tokenInfo.issuer, state._newLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, qpi.invocator()};
+        MicroTokenAllowance_output _microTokenAllowance_output;
+        CALL(MicroTokenAllowance, _microTokenAllowance_input, _microTokenAllowance_output);
+        if(_microTokenAllowance_output.balance < input.qwalletAmount) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Insufficient Qwallet allowance
+        }
+
+        locals._reserveToken = 0;
+        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
+        locals._weightToken = 0;
+        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
+
+        for (uint8 i = 0; i < state._newLiquid.tokenLength; i++) {
+            if((state._newLiquid.tokens.get(i).tokenInfo.issuer == input.outputTokenInfo.issuer) && 
+            (state._newLiquid.tokens.get(i).tokenInfo.assetName == input.outputTokenInfo.assetName)) {
+                locals._reserveToken = state._newLiquid.tokens.get(i).balance;
+                locals._weightToken = state._newLiquid.tokens.get(i).weight;
+                locals._token = state._newLiquid.tokens.get(i);
+                break;
+            }
+        }
+
+        if(locals._reserveToken == 0 || locals._weightToken == 0) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid token
+        }
+
+        // Calculate the price of Qwallet in terms of the token
+        locals._price = (locals._reserveQwallet * locals._weightQwallet * MILLION) / (locals._reserveToken * locals._weightToken);
+        // Calculate the output token amount and remainder
+        locals._outputTokenAmount = (input.qwalletAmount * locals._price) / MILLION;
+        locals._remainder = (input.qwalletAmount * locals._price) % MILLION;
+
+        // Calculate the output QU amount from the remainder
+        locals._quPrice = (state._newLiquid.quBalance * state._newLiquid.quWeight * MILLION) / (locals._token.balance * locals._token.weight);
+        locals._outputQuAmount = (locals._remainder * locals._quPrice) / MILLION / MILLION;
+
+        // Transfer the output token amount to the invocator
+        TransferMicroToken_input _transferMicroToken_input{ input.outputTokenInfo.issuer, input.outputTokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputTokenAmount};
+        TransferMicroToken_output _transferMicroToken_output;
+        CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
+
+        // Transfer the output QU amount to the invocator
+        qpi.transfer(qpi.invocator(), locals._outputQuAmount);
+
+        // Update the token and Qwallet reserves
+        state._newLiquid.tokens.set(input.liquidId, Token{ state._newLiquid.tokens.get(input.liquidId).tokenInfo, state._newLiquid.tokens.get(input.liquidId).balance - locals._outputTokenAmount, state._newLiquid.tokens.get(input.liquidId).weight });
+        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance + input.qwalletAmount, state._newLiquid.tokens.get(0).weight });
+        state._newLiquid.quBalance -= locals._outputQuAmount;
+
+        // Save the updated liquid state
+        state._liquids.set(input.liquidId, state._newLiquid);
+
+        output.outputAmount = locals._outputTokenAmount;
+        output.quAmount = locals._outputQuAmount;
+    _
+    struct SwapQUToQwallet_locals {
+        uint64 _reserveQwallet;
+        uint64 _reserveQU;
+        uint8 _weightQwallet;
+        uint8 _weightQU;
+        uint64 _price;
+        uint64 _outputQwalletAmount;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(SwapQUToQwallet)
+        // Validate the input QU amount
+        if (input.quAmount <= 0 || input.quAmount > state._newLiquid.quBalance) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid QU amount
+        }
+
+        // Return the excess QU amount to the invocator
+        if (input.quAmount > qpi.invocationReward()) {
+            qpi.transfer(qpi.invocator(), input.quAmount - qpi.invocationReward());
+        }
+
+        // Retrieve the liquid pool based on the provided ID
+        state._newLiquid = state._liquids.get(input.liquidId);
+
+        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
+        locals._reserveQU = state._newLiquid.quBalance;
+        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
+        locals._weightQU = state._newLiquid.quWeight;
+
+        // Calculate the price of QU in terms of Qwallet
+        locals._price = (locals._reserveQU * locals._weightQU * MILLION) / (locals._reserveQwallet * locals._weightQwallet);
+        // Calculate the output Qwallet amount
+        locals._outputQwalletAmount = input.quAmount * locals._price / MILLION;
+
+        // Transfer the output Qwallet amount to the invocator
+        TransferMicroToken_input _transferMicroToken_input{ state._newLiquid.tokens.get(0).tokenInfo.issuer, state._newLiquid.tokens.get(0).tokenInfo.assetName, VLIQUID_CONTRACTID, locals._outputQwalletAmount};
+        TransferMicroToken_output _transferMicroToken_output;
+        CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
+
+        // Update the Qwallet and QU reserves
+        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance - locals._outputQwalletAmount, state._newLiquid.tokens.get(0).weight });
+        state._newLiquid.quBalance += input.quAmount;
+
+        // Save the updated liquid state
+        state._liquids.set(input.liquidId, state._newLiquid);
+
+        output.qwalletAmount = locals._outputQwalletAmount;
+    _
+    struct SwapQwalletToQU_locals {
+        uint64 _reserveQwallet;
+        uint64 _reserveQU;
+        uint8 _weightQwallet;
+        uint8 _weightQU;
+        uint64 _price;
+        uint64 _outputQuAmount;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(SwapQwalletToQU)
+        // Validate the input Qwallet amount
+        if (input.qwalletAmount <= 0 || input.qwalletAmount > state._newLiquid.tokens.get(0).balance) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid Qwallet amount
+        }
+
+        // Retrieve the liquid pool based on the provided ID
+        state._newLiquid = state._liquids.get(input.liquidId);
+
+        locals._reserveQwallet = state._newLiquid.tokens.get(0).balance;
+        locals._reserveQU = state._newLiquid.quBalance;
+        locals._weightQwallet = state._newLiquid.tokens.get(0).weight;
+        locals._weightQU = state._newLiquid.quWeight;
+
+        // Calculate the price of Qwallet in terms of QU
+        locals._price = (locals._reserveQwallet * locals._weightQwallet * MILLION) / (locals._reserveQU * locals._weightQU);
+        // Calculate the output QU amount
+        locals._outputQuAmount = input.qwalletAmount * locals._price / MILLION;
+
+        // Transfer the output QU amount to the invocator
+        qpi.transfer(qpi.invocator(), locals._outputQuAmount);
+
+        // Update the Qwallet and QU reserves
+        state._newLiquid.tokens.set(0, Token{ state._newLiquid.tokens.get(0).tokenInfo, state._newLiquid.tokens.get(0).balance - input.qwalletAmount, state._newLiquid.tokens.get(0).weight });
+        state._newLiquid.quBalance += locals._outputQuAmount;
+
+        // Save the updated liquid state
+        state._liquids.set(input.liquidId, state._newLiquid);
+
+        output.quAmount = locals._outputQuAmount;
+    _
     struct SingleSwap_locals {
         uint64 _reserveA;
         uint64 _reserveB;
@@ -1156,7 +1578,13 @@ private:
         REGISTER_USER_PROCEDURE(CreateLiquid, 6);
         REGISTER_USER_PROCEDURE(AddLiquid, 7);
         REGISTER_USER_PROCEDURE(RemoveLiquid, 8);
-        REGISTER_USER_PROCEDURE(SingleSwap, 9);
+        REGISTER_USER_PROCEDURE(SwapToQU, 9);
+        REGISTER_USER_PROCEDURE(SwapFromQU, 10);
+        REGISTER_USER_PROCEDURE(SwapToQwallet, 11);
+        REGISTER_USER_PROCEDURE(SwapFromQwallet, 12);
+        REGISTER_USER_PROCEDURE(SwapQUToQwallet, 13);
+        REGISTER_USER_PROCEDURE(SwapQwalletToQU, 14);
+        REGISTER_USER_PROCEDURE(SingleSwap, 15);
     _
 
     INITIALIZE
