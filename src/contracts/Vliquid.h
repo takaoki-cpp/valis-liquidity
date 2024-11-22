@@ -247,6 +247,14 @@ public:
         bool success;
     };
 
+    struct DepositeBonusToken_input {
+        uint64 liquidId;
+        uint64 bonusTokenAmount;
+    };
+    struct DepositeBonusToken_output {
+        uint64 depositedBonusTokenAmount;
+    };
+
     struct Stake_input
     {
         uint64 liquidId;
@@ -1733,6 +1741,41 @@ private:
         state._stakingPools.set(input.liquidId, state._tempStakingPool);
         state._stakingPoolsCount++;
         output.success = true;
+    _
+    struct DepositeBonusToken_locals {
+
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(DepositeBonusToken)
+        // Retrieve the staking pool based on the provided liquid ID
+        state._tempStakingPool = state._stakingPools.get(input.liquidId);
+
+        // Check if the staking pool is initialized
+        if (!state._tempStakingPool.isInitialized) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Staking pool not initialized
+        }
+
+        // Validate the bonus token amount
+        if (input.bonusTokenAmount <= 0) {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return; // Error: Invalid bonus token amount
+        }
+
+        // Transfer the bonus tokens to the staking pool
+        TransferMicroToken_input _transferMicroToken_input{ 
+            state._tempStakingPool.bonusTokenInfo.issuer,
+            state._tempStakingPool.bonusTokenInfo.assetName,
+            VLIQUID_CONTRACTID,
+            input.bonusTokenAmount
+        };
+        TransferMicroToken_output _transferMicroToken_output;
+        CALL(TransferMicroToken, _transferMicroToken_input, _transferMicroToken_output);
+
+        // Update the total bonus token amount in the staking pool
+        state._tempStakingPool.totalBonusTokenAmount += input.bonusTokenAmount;
+
+        // Save the updated staking pool state
+        state._stakingPools.set(input.liquidId, state._tempStakingPool);
     _
     struct Stake_locals {
         uint64 _rewardDebt;
