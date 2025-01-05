@@ -689,7 +689,7 @@ static unsigned char computorSeeds[][55 + 1] = {
 // You can find current peer IPs at https://app.qubic.li/network/live
 static const unsigned char knownPublicPeers[][4] = {
     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
-    {45,143,199,16},
+    {45,143,199,17},
     {134,3,121,247},
 };
 
